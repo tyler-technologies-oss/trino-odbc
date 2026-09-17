@@ -12,8 +12,10 @@ This open-source project is a partially complete ODBC driver for the
 [Trino distributed SQL engine](https://trino.io/). It implements the
 essential portions of the ODBC core specification required to enable
 Microsoft Excel and Microsoft PowerBI Desktop to connect to and
-execute queries against a Trino server using either External
-Authentication or OIDC Client Credential flow.
+execute queries against a Trino server using External
+Authentication, OIDC Client Credential flow, or OIDC Device
+Authorization flow (also known as device grant). Connecting to an
+unauthenticated Trino server is also supported.
 The driver was developed to address a narrow gap in connectivity
 options for these tools on the Windows operating system within
 the Open Source Trino community.
@@ -26,13 +28,13 @@ Microsoft in any way.
 This driver is tested to work within a very narrow scope on Windows
 PCs and servers that utilize BI tools. Specifically, we target
 compatibility with Microsoft Excel and PowerBI Desktop with External
-Authentication and Client Credential Auth. Other tools, forms of
-authentication, and functionality of the ODBC specification were
-left unimplemented if not required by these tools. Functionality on
-external systems or configurations may vary, and compatibility is
-not guaranteed.  For users needing cross-platform compatibility or
-full ODBC specification support, you should consider a feature-complete
-commercially available ODBC driver for Trino.
+Authentication, Client Credential Auth, and Device Flow Auth. Other
+tools, forms of authentication, and functionality of the ODBC
+specification were left unimplemented if not required by these tools.
+Functionality on external systems or configurations may vary, and
+compatibility is not guaranteed.  For users needing cross-platform
+compatibility or full ODBC specification support, you should consider
+a feature-complete commercially available ODBC driver for Trino.
 
 ### Alternatives and Performance Considerations
 
@@ -55,7 +57,12 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
 - Only supports reading data, not writing/transacting data.
 - Does not support most forms of Trino authentication including password authentication
 - Does not support the ODBC wide-char unicode encoding (UCS-2 format, 16-bit characters)
-- Does not support Parameterized queries (SQLBindParameter, SQLParamData, SQLNumParams etc.)
+- Supports parameterized queries only through prepared execution. Parameters
+  are bound with SQLBindParameter and sent by SQLExecute. Consequently:
+  - SQLExecDirect does not accept parameters - prepare the statement instead.
+  - Does not support counting or describing parameters (SQLNumParams)
+  - Does not support sending parameter data at execution time
+    (SQLParamData/SQLPutData)
 - Does not support ODBC conformance Level 1 or Level 2
   - [About Conformance Levels](https://learn.microsoft.com/en-us/sql/odbc/reference/develop-app/interface-conformance-levels)
   - It does not __completely__ support the Core conformance level, but is close.
@@ -161,6 +168,29 @@ the presence of the `DEBUG` preprocessor definition, meaning your tests
 will automatically target the correct driver based on your build
 configuration.
 
+The `install_development_drivers.ps1` script in the repository root
+automates the driver-registration half of that setup. It writes the
+registry keys for both the 64-bit and 32-bit (WOW6432Node) hives, and
+emits a `.reg` file alongside the script so you can review what it
+changed. It must be run from an Administrator PowerShell prompt.
+
+Always pass `-DriverName` explicitly when using the CMake presets:
+
+```powershell
+./install_development_drivers.ps1 `
+  -DllPath .\out\build\x64-debug\TrinoODBC.dll `
+  -DriverName TrinoODBCDebug
+```
+
+The script can infer the driver name from the DLL path, but only when a
+path segment is exactly `Debug` or `Release`. The preset output directories
+are named `x64-debug` and `x64-release`, which do not match, so inference
+falls through to its default of `TrinoODBCRelease` - meaning a debug build
+would silently register as your release driver. `-DriverName` avoids that.
+
+You still need to create the `TrinoTestDebug` and `TrinoTestRelease` DSNs
+yourself using the ODBC Data Sources window.
+
 To get started, the easiest thing to do is to pick a processor
 bitness and stick with it until your feature is developed. If you decide
 to test both x64 and x86 builds, make sure the Driver/DSN you are testing
@@ -218,6 +248,12 @@ this driver.
 
 
 ### Manual Install
+
+To register a driver you have built yourself, prefer the
+`install_development_drivers.ps1` script described in the
+"Testing and Debugging" section above - it performs the steps below
+for both the 64-bit and 32-bit hives. The manual process is documented
+here for reference, and for installing a driver DLL from elsewhere.
 
 1. Open regedit as admin
 2. Add Driver Information:
