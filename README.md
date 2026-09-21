@@ -63,6 +63,10 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
   - Does not support counting or describing parameters (SQLNumParams)
   - Does not support sending parameter data at execution time
     (SQLParamData/SQLPutData)
+  - `SQLNumParams`, `SQLParamData`, and `SQLPutData` are exported and are
+    still reported as available by `SQLGetFunctions`, but calling them
+    returns `SQL_ERROR` without a diagnostic record. Do not rely on
+    `SQLGetFunctions` to detect that these are missing.
 - Does not support ODBC conformance Level 1 or Level 2
   - [About Conformance Levels](https://learn.microsoft.com/en-us/sql/odbc/reference/develop-app/interface-conformance-levels)
   - It does not __completely__ support the Core conformance level, but is close.
@@ -183,10 +187,18 @@ Always pass `-DriverName` explicitly when using the CMake presets:
 ```
 
 The script can infer the driver name from the DLL path, but only when a
-path segment is exactly `Debug` or `Release`. The preset output directories
-are named `x64-debug` and `x64-release`, which do not match, so inference
-falls through to its default of `TrinoODBCRelease` - meaning a debug build
-would silently register as your release driver. `-DriverName` avoids that.
+path segment is exactly `Debug` or `Release` (the match is
+case-insensitive). The preset output directories are named `x64-debug`
+and `x64-release`, which do not match, and neither do `RelWithDebInfo`
+or `MinSizeRel`. Inference then falls through to its default of
+`TrinoODBCRelease` - meaning a debug build would silently register as
+your release driver. `-DriverName` avoids that. The script prints the
+build it classified and the registry key it wrote, so check that output
+if you are unsure which name was used.
+
+Note that `-DllPath` is effectively required when working from the
+presets - with no arguments the script only searches a few legacy
+locations, none of which are the preset output directories.
 
 You still need to create the `TrinoTestDebug` and `TrinoTestRelease` DSNs
 yourself using the ODBC Data Sources window.
@@ -252,8 +264,12 @@ this driver.
 To register a driver you have built yourself, prefer the
 `install_development_drivers.ps1` script described in the
 "Testing and Debugging" section above - it performs the steps below
-for both the 64-bit and 32-bit hives. The manual process is documented
-here for reference, and for installing a driver DLL from elsewhere.
+for both the 64-bit and 32-bit hives. Note that the script names the
+driver `TrinoODBCDebug` or `TrinoODBCRelease` unless you pass
+`-DriverName TrinoODBC`, whereas the steps below and
+`install/RegisterTrinoODBC.reg` use the name `TrinoODBC`. The manual
+process is documented here for reference, and for installing a driver
+DLL from elsewhere.
 
 1. Open regedit as admin
 2. Add Driver Information:
