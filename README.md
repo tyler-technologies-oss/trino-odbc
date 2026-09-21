@@ -58,7 +58,7 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
 - Does not support most forms of Trino authentication including password authentication
 - Does not support the ODBC wide-char unicode encoding (UCS-2 format, 16-bit characters)
 - Supports prepared statements (SQLPrepare, SQLExecute, SQLBindParameter) only
-  in a limited form. See the "Prepared statements and parameters" section below
+  in a limited form. See the "Prepared Statements and Parameters" section below
   for what is and is not supported.
 - Does not support ODBC conformance Level 1 or Level 2
   - [About Conformance Levels](https://learn.microsoft.com/en-us/sql/odbc/reference/develop-app/interface-conformance-levels)
@@ -79,7 +79,7 @@ use the driver to read data from Trino using Client Credential Auth,
 External Authentication, or Device Flow.
 
 
-### Prepared statements and parameters
+### Prepared Statements and Parameters
 
 The driver implements prepared statements by mapping them onto Trino's
 own `PREPARE` and `EXECUTE` SQL statements. `SQLPrepare` submits a
