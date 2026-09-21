@@ -17,7 +17,7 @@ The tag is the only place a release version is recorded, so
 no file in the source tree needs to be edited to cut a
 release. When a `vX.Y.Z` tag triggers the release workflow,
 `X.Y.Z` is handed to CMake as `TRINO_ODBC_VERSION`, which
-stamps it onto three things:
+stamps it onto four things:
 
 * `SQL_DRIVER_VER`, which is the version ODBC applications
   display and write to their logs. ODBC requires a
@@ -29,6 +29,10 @@ stamps it onto three things:
 * The MSI `ProductVersion`, which Windows uses to decide
   whether an installer is an upgrade of an existing install,
   and which appears in Programs and Features.
+* The installer filenames, which are published as
+  `TrinoODBC_x64_X.Y.Z.msi` and `TrinoODBC_x86_X.Y.Z.msi`.
+  Users download and keep these files, so the name has to
+  stay meaningful away from the release page.
 
 Builds that did not come from the release workflow report
 version `0.0.0`. That is how a development build can be told

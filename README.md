@@ -262,8 +262,11 @@ this driver.
     1. `cd install`
     1. `./build_x64_installer.ps1` (for a 64-bit installer)
     1. `./build_x86_installer.ps1` (for a 32-bit installer)
-1. The finished `TrinoODBC_x64.msi` or `TrinoODBC_x86.msi` installers will appear,
-   ready to be used.
+1. The finished installer will appear, ready to be used. The filename carries
+   the version, so a locally built 64-bit installer is
+   `TrinoODBC_x64_0.0.0.msi`. Only the release workflow stamps a real version;
+   builds made any other way report `0.0.0`. Pass `-Version` to the script if
+   you need a specific version instead.
 
 
 ### Manual Install

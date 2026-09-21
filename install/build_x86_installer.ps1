@@ -15,7 +15,11 @@ param(
 $OriginalDirectory = Get-Location
 try {
   Set-Location -Path $PSScriptRoot
-  wix build -ext WixToolset.UI.wixext -arch x86 -d Version=$Version .\TrinoODBC_x86.wxs
+  # The version goes in the filename as well as inside the package.
+  # Clients download these installers and keep them, so the file has
+  # to stay identifiable once it is out of the release page's context.
+  wix build -ext WixToolset.UI.wixext -arch x86 -d Version=$Version `
+            -o ".\TrinoODBC_x86_$Version.msi" .\TrinoODBC_x86.wxs
 }
 finally {
   Set-Location -Path $OriginalDirectory
