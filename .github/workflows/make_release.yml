@@ -21,24 +21,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # The tag is the single source of truth for the version. Strip
+      # its leading "v" to get the MAJOR.MINOR.PATCH form that CMake
+      # and WiX both expect.
+      - name: Derive version from tag
+        shell: bash
+        run: echo "DRIVER_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
       - name: Get CMake
         uses: lukka/get-cmake@latest
 
       - name: Run vcpkg
         uses: lukka/run-vcpkg@v11
-        
+
       - name: Run CMake and build x86
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x86
-          cmake --preset x86-release
+          cmake --preset x86-release -DTRINO_ODBC_VERSION=%DRIVER_VERSION%
           cmake --build --preset x86-release
 
       - name: Run CMake and build x64
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cmake --preset x64-release
+          cmake --preset x64-release -DTRINO_ODBC_VERSION=%DRIVER_VERSION%
           cmake --build --preset x64-release
 
       - name: Add dotnet tool cli
@@ -55,12 +62,12 @@ jobs:
       - name: Build x86 installer
         shell: pwsh
         run: |
-          .\install\build_x86_installer.ps1
+          .\install\build_x86_installer.ps1 -Version $env:DRIVER_VERSION
 
       - name: Build x64 installer
         shell: pwsh
         run: |
-          .\install\build_x64_installer.ps1
+          .\install\build_x64_installer.ps1 -Version $env:DRIVER_VERSION
 
       - name: Upload installers
         uses: actions/upload-artifact@v7

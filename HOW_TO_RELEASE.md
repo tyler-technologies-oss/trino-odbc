@@ -11,6 +11,35 @@ burdensome, it can be further automated.
 
 ---
 
+### Where the version comes from
+
+The tag is the only place a release version is recorded, so
+no file in the source tree needs to be edited to cut a
+release. When a `vX.Y.Z` tag triggers the release workflow,
+`X.Y.Z` is handed to CMake as `TRINO_ODBC_VERSION`, which
+stamps it onto three things:
+
+* `SQL_DRIVER_VER`, which is the version ODBC applications
+  display and write to their logs. ODBC requires a
+  `##.##.####` layout, so the driver pads the components
+  and reports `1.4.0` as `01.04.0000`.
+* The driver DLL's version resource, which is what the
+  Details tab of the file's properties shows in Windows
+  Explorer.
+* The MSI `ProductVersion`, which Windows uses to decide
+  whether an installer is an upgrade of an existing install,
+  and which appears in Programs and Features.
+
+Builds that did not come from the release workflow report
+version `0.0.0`. That is how a development build can be told
+apart from a released one.
+
+One constraint is worth knowing when picking a version:
+Windows Installer limits the major and minor components to
+255 and the patch component to 65535.
+
+---
+
 ### Step 1: Evaluate changes since the prior release
 
 Review a diff between the prior release tag and the current
@@ -36,6 +65,11 @@ Select the semantic version of your release, then push a tag of
 the form `vX.Y.Z`, based on the version number you selected
 in step 1. Observe the github action workflow for the release
 process to ensure it completes successfully.
+
+The tag drives the version the driver and installers report,
+so take care to push the tag you intended. Correcting a
+mistake means deleting the tag and the draft release it
+produced, then tagging again.
 
 ### Step 4: Review the Release Changelog
 

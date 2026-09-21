@@ -2,11 +2,13 @@
 #include <sql.h>
 #include <sqlext.h>
 
+#include <format>
 #include <string>
 
 #include "../util/valuePtrHelper.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/connHandle.hpp"
+#include "version.hpp"
 
 _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     SQLGetInfo(SQLHDBC ConnectionHandle,
@@ -40,7 +42,15 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
       break;
     }
     case SQL_DRIVER_VER: { // 7
-      writeNullTermStringToPtr(InfoValue, "00.00.0001", StringLengthPtr);
+      // ODBC requires this be reported as ##.##.####, where the
+      // components are the major, minor, and release versions. That
+      // is a different layout than the semver string the release is
+      // tagged with, so the components are padded individually.
+      const std::string driverVersion = std::format("{:02}.{:02}.{:04}",
+                                                    TRINO_ODBC_VERSION_MAJOR,
+                                                    TRINO_ODBC_VERSION_MINOR,
+                                                    TRINO_ODBC_VERSION_PATCH);
+      writeNullTermStringToPtr(InfoValue, driverVersion, StringLengthPtr);
       break;
     }
     case SQL_SERVER_NAME: { // 13
