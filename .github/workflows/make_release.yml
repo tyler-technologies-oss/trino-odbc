@@ -94,15 +94,28 @@ jobs:
           name: installers
           path: ./installers
 
+      # Users download these installers over the internet, so publish
+      # hashes alongside them to give people a way to confirm that what
+      # arrived is what was released. The filenames are recorded
+      # without a path so the file works with a plain `sha256sum -c`.
+      - name: Generate checksums
+        working-directory: ./installers
+        run: sha256sum *.msi > SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: false
+          # Draft the release notes from the pull requests merged since
+          # the previous release, giving the maintainer something to edit
+          # in step 4 of HOW_TO_RELEASE.md rather than a blank release.
+          generate_release_notes: true
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           files: |
             installers/*.msi
+            installers/SHA256SUMS.txt
             installers/LICENSE.rtf
             installers/third_party_licenses.txt

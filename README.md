@@ -238,7 +238,16 @@ There are three ways to install this driver.
 
 ### Using a pre-built MSI installer
 
-See the releases page for the most recent release of this driver.
+See the releases page for the most recent release of this driver. Each release
+publishes a 64-bit and a 32-bit installer named for that version, such as
+`TrinoODBC_x64_1.4.0.msi`, along with a `SHA256SUMS.txt` file listing the hash
+of each installer.
+
+To confirm a download arrived intact, run
+`Get-FileHash -Algorithm SHA256 .\TrinoODBC_x64_1.4.0.msi` in PowerShell and
+compare the hash it prints against the matching line in `SHA256SUMS.txt`.
+PowerShell prints the hash in upper case and `SHA256SUMS.txt` records it in
+lower case, so compare the two without regard to case.
 
 ### Building your own MSI installer
 
