@@ -51,6 +51,10 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
   Descriptor* ird            = statement->impRowDesc;
   DescriptorField columnInfo = ird->getField(ColumnNumber);
 
+  // Set by the cases that return a string, if the caller's buffer
+  // was too small to hold all of it. Handled once after the switch.
+  bool truncated = false;
+
   switch (FieldIdentifier) {
     case SQL_DESC_CONCISE_TYPE: { // 2
       WriteLog(LL_TRACE, "  Getting SQL column type");
@@ -74,8 +78,8 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_COLUMN_TYPE_NAME: { // 14
       WriteLog(LL_TRACE, "  Getting SQL column name");
       std::string columnTypeName = columnInfo.trinoRawTypeName;
-      writeNullTermStringToPtr(
-          CharacterAttributePtr, columnTypeName, StringLengthPtr);
+      truncated                  = writeNullTermStringToPtr(
+          CharacterAttributePtr, columnTypeName, BufferLength, StringLengthPtr);
       break;
     }
     case SQL_DESC_NUM_PREC_RADIX: { // 32
@@ -118,8 +122,8 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_NAME: { // 1011
       WriteLog(LL_TRACE, "  Getting SQL column name");
       std::string columnName = columnInfo.columnName;
-      writeNullTermStringToPtr(
-          CharacterAttributePtr, columnName, StringLengthPtr);
+      truncated              = writeNullTermStringToPtr(
+          CharacterAttributePtr, columnName, BufferLength, StringLengthPtr);
       break;
     }
     case SQL_DESC_UNNAMED: { // 1012
@@ -145,6 +149,16 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
                    std::to_string(FieldIdentifier));
       return SQL_ERROR;
     }
+  }
+
+  if (truncated) {
+    WriteLog(LL_WARN,
+             "  Exiting SQLColAttribute - the buffer provided for field " +
+                 std::to_string(FieldIdentifier) + " was too small");
+    // 01004 = String data, right truncated. StringLengthPtr holds the
+    // length the application needs to allocate to get the whole value.
+    statement->setError(ErrorInfo("String data, right truncated", "01004"));
+    return SQL_SUCCESS_WITH_INFO;
   }
 
   return SQL_SUCCESS;

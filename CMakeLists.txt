@@ -146,9 +146,11 @@ add_library(TrinoODBC SHARED
 )
 
 # The generated version header lives in the build tree, so the
-# driver needs that directory on its include path.
+# driver needs that directory on its include path. It is PUBLIC so
+# the tests can assert against the version that was compiled in
+# rather than a literal they would have to update every release.
 target_include_directories(TrinoODBC
-                           PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+                           PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET TrinoODBC PROPERTY CXX_STANDARD 20)

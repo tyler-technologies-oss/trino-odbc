@@ -41,18 +41,27 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
                "  Requesting RecNumber: " + std::to_string(RecNumber));
       ErrorInfo errorInfo = conn->getError();
       if (RecNumber == 1 and errorInfo.errorOccurred()) {
-        writeNullTermStringToPtr<SQLINTEGER>(
-            SqlStatePtr, errorInfo.sqlStateCode, nullptr);
+        // ODBC fixes the SQLSTATE buffer at five characters plus a
+        // null terminator, which is the only size it can be given.
+        writeNullTermStringToPtr<SQLINTEGER>(SqlStatePtr,
+                                             errorInfo.sqlStateCode,
+                                             SQL_SQLSTATE_SIZE + 1,
+                                             nullptr);
 
-        writeNullTermStringToPtr(
-            MessageTextPtr, errorInfo.errorMessage, TextLengthPtr);
+        bool truncated = writeNullTermStringToPtr(MessageTextPtr,
+                                                  errorInfo.errorMessage,
+                                                  BufferLength,
+                                                  TextLengthPtr);
 
         if (NativeErrorPtr != nullptr) {
           *NativeErrorPtr =
               -1; // If a valid pointer was provided set the native error code
         }
 
-        return SQL_SUCCESS;
+        // A truncated message is reported by the return code alone.
+        // SQLGetDiagRec must not record a diagnostic about itself,
+        // which is what makes it safe to call after any failure.
+        return truncated ? SQL_SUCCESS_WITH_INFO : SQL_SUCCESS;
       } else {
         return SQL_NO_DATA;
       }
@@ -69,8 +78,10 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
 
         // Only set SqlStatePtr and NativeErrorPtr on the first chunk
         if (RecNumber == 1) {
+          // ODBC fixes the SQLSTATE buffer at five characters plus a
+          // null terminator, which is the only size it can be given.
           writeNullTermStringToPtr<SQLINTEGER>(
-              SqlStatePtr, odbcErr.sqlstate, nullptr);
+              SqlStatePtr, odbcErr.sqlstate, SQL_SQLSTATE_SIZE + 1, nullptr);
 
           if (NativeErrorPtr) {
             *NativeErrorPtr = odbcErr.native;

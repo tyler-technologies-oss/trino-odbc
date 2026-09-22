@@ -4,6 +4,7 @@
 
 #include "../util/valuePtrHelper.hpp"
 #include "../util/writeLog.hpp"
+#include "handles/connHandle.hpp"
 
 
 SQLRETURN SQL_API SQLGetConnectAttr(
@@ -22,7 +23,19 @@ SQLRETURN SQL_API SQLGetConnectAttr(
     case (SQL_ATTR_CURRENT_CATALOG): {
       // Return an empty string to show that no catalog is assigned.
       // I'm not sure if you can set a specific catalog at the connection level.
-      writeNullTermStringToPtr(Value, "system", StringLengthPtr);
+      if (writeNullTermStringToPtr(
+              Value, "system", BufferLength, StringLengthPtr)) {
+        WriteLog(LL_WARN,
+                 "  Exiting SQLGetConnectAttr - the buffer provided for the "
+                 "current catalog was too small");
+        // 01004 = String data, right truncated. StringLengthPtr holds
+        // the length the application needs to allocate to get it all.
+        Connection* connection =
+            reinterpret_cast<Connection*>(ConnectionHandle);
+        connection->setError(
+            ErrorInfo("String data, right truncated", "01004"));
+        return SQL_SUCCESS_WITH_INFO;
+      }
       break;
     }
     default: {
