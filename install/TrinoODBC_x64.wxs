@@ -3,7 +3,7 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui" >
   <Package Name="TrinoODBC 64-bit"
            Language="1033"
-           Version="0.0.1"
+           Version="$(var.Version)"
            Manufacturer="Trino"
            UpgradeCode="2cc2e3fc-3a87-493d-99d0-643c3dd1df59"
            InstallerVersion="500"

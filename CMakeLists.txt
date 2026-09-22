@@ -9,7 +9,29 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project ("TrinoODBC")
+# The driver version. The release workflow overrides this with the
+# semver tag that triggered it, so the default below is what local
+# and development builds report.
+#
+# The default is the next version expected to be released, not zero.
+# An installer has to outrank the newest public release for Windows
+# to accept it as an upgrade, so a default of 0.0.0 would leave a
+# locally built MSI unable to install over one from the releases
+# page. Bump this after each release, per HOW_TO_RELEASE.md.
+set(TRINO_ODBC_VERSION "0.0.8"
+    CACHE STRING "Driver version, as MAJOR.MINOR.PATCH")
+
+# RC is needed for the generated version resource that stamps the
+# version onto the DLL itself. C and CXX are the languages project()
+# would have enabled by default.
+project ("TrinoODBC"
+         VERSION ${TRINO_ODBC_VERSION}
+         LANGUAGES C CXX RC)
+
+# Generate the version header the driver reports through SQLGetInfo,
+# and the resource script that stamps the version onto the DLL.
+configure_file("src/version.hpp.in" "generated/version.hpp" @ONLY)
+configure_file("src/version.rc.in" "generated/version.rc" @ONLY)
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -120,7 +142,13 @@ add_library(TrinoODBC SHARED
             "src/driver/setStmtAttr.cpp"
             "src/driver/statistics.cpp"
             "src/driver/tables.cpp"
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/version.rc"
 )
+
+# The generated version header lives in the build tree, so the
+# driver needs that directory on its include path.
+target_include_directories(TrinoODBC
+                           PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET TrinoODBC PROPERTY CXX_STANDARD 20)
