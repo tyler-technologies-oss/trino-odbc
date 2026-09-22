@@ -4,12 +4,13 @@
 .PARAMETER Version
   The MAJOR.MINOR.PATCH version to stamp onto the package. The release
   workflow passes the version from the tag that triggered it. The
-  default matches the placeholder CMake uses, so a locally built
-  installer is easy to tell apart from a released one.
+  default matches the one in CMakeLists.txt, which is the next version
+  expected to be released, so a locally built installer still outranks
+  the newest public release and Windows accepts it as an upgrade.
 #>
 param(
   [ValidatePattern('^\d+\.\d+\.\d+$')]
-  [string]$Version = "0.0.0"
+  [string]$Version = "0.0.8"
 )
 
 $OriginalDirectory = Get-Location

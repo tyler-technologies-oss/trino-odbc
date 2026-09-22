@@ -10,10 +10,15 @@ if (POLICY CMP0141)
 endif()
 
 # The driver version. The release workflow overrides this with the
-# semver tag that triggered it, so the placeholder below is what
-# local and development builds report. That makes a development
-# build easy to tell apart from a released one.
-set(TRINO_ODBC_VERSION "0.0.0"
+# semver tag that triggered it, so the default below is what local
+# and development builds report.
+#
+# The default is the next version expected to be released, not zero.
+# An installer has to outrank the newest public release for Windows
+# to accept it as an upgrade, so a default of 0.0.0 would leave a
+# locally built MSI unable to install over one from the releases
+# page. Bump this after each release, per HOW_TO_RELEASE.md.
+set(TRINO_ODBC_VERSION "0.0.8"
     CACHE STRING "Driver version, as MAJOR.MINOR.PATCH")
 
 # RC is needed for the generated version resource that stamps the

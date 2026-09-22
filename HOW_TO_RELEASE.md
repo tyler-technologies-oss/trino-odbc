@@ -34,13 +34,23 @@ stamps it onto four things:
   Users download and keep these files, so the name has to
   stay meaningful away from the release page.
 
-Builds that did not come from the release workflow report
-version `0.0.0`. That is how a development build can be told
-apart from a released one.
+Builds that did not come from the release workflow fall back
+to the default `TRINO_ODBC_VERSION` in `CMakeLists.txt`, which
+holds the next version expected to be released. It is
+deliberately not zero: Windows only accepts an installer as an
+upgrade if it outranks what is already installed, so a zero
+default would leave a locally built MSI unable to install over
+one from the releases page. The cost of that choice is that a
+development build reports the same version as the release it
+anticipates, so do not rely on the version alone to tell those
+two apart.
 
-One constraint is worth knowing when picking a version:
-Windows Installer limits the major and minor components to
-255 and the patch component to 65535.
+Two limits bound the version you can pick. Windows Installer
+compares only the first three components and caps major and
+minor at 255 and patch at 65535. The `##.##.####` layout ODBC
+requires is tighter still, and is the one that binds: major
+and minor have to stay at or below 99, and patch at or below
+9999.
 
 ---
 
@@ -75,10 +85,10 @@ This is worth doing whenever anything in the packaging path
 has changed, whether that is the WiX files, the installer
 scripts, or the workflow itself, because a manual run is the
 only way to exercise that path without a tag. A manual run
-takes the version to stamp on the build as an input and
-defaults to `0.0.0`. That version exists only so the
-artifacts can be inspected and has no bearing on the release
-you go on to make.
+takes the version to stamp on the build as an input, defaulting
+to the next version expected to be released. That version
+exists only so the artifacts can be inspected and has no
+bearing on the release you go on to make.
 
 ### Step 4: Push a tag to trigger the release
 
@@ -114,4 +124,20 @@ it will describe a file nobody can download.
 
 Once you have reviewed the draft (non-public) release and
 found it to be ready for the user community, mark the release
-as ready (public). This completes the release process.
+as ready (public).
+
+### Step 7: Bump the development version
+
+Raise the default `TRINO_ODBC_VERSION` in `CMakeLists.txt`, and
+the matching defaults in `install/build_x64_installer.ps1`,
+`install/build_x86_installer.ps1`, and the `version` input of
+the release workflow, to the next version you expect to
+release. Nothing about the release you just made depends on
+this, and getting it wrong cannot produce a bad release,
+because a real release always takes its version from the tag.
+
+What it does affect is whether a locally built installer can
+be installed over the release you just published. Left behind,
+the default eventually names a version older than the newest
+release, and Windows will refuse the older installer as a
+downgrade. This completes the release process.
