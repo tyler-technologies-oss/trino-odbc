@@ -63,7 +63,24 @@ testing is required (or testing of different bitnesses)
 is left to the discretion of the maintainer performing the
 release.
 
-### Step 3: Push a tag to trigger the release
+### Step 3 (optional): Trial-build the installers
+
+The release workflow can also be started by hand from the
+Actions tab, against any branch. A manual run builds the
+driver and both installers exactly as a release does, then
+stops and leaves them as workflow artifacts. It publishes
+nothing, so no tag is spent and no draft release appears.
+
+This is worth doing whenever anything in the packaging path
+has changed, whether that is the WiX files, the installer
+scripts, or the workflow itself, because a manual run is the
+only way to exercise that path without a tag. A manual run
+takes the version to stamp on the build as an input and
+defaults to `0.0.0`. That version exists only so the
+artifacts can be inspected and has no bearing on the release
+you go on to make.
+
+### Step 4: Push a tag to trigger the release
 
 Select the semantic version of your release, then push a tag of
 the form `vX.Y.Z`, based on the version number you selected
@@ -75,7 +92,7 @@ so take care to push the tag you intended. Correcting a
 mistake means deleting the tag and the draft release it
 produced, then tagging again.
 
-### Step 4: Review the Release Changelog
+### Step 5: Review the Release Changelog
 
 Observe that a draft (non-public) release has appeared at
 the top of the repositories release list. This release
@@ -93,7 +110,7 @@ check a download against. If you replace or rebuild an
 installer attached to the draft, regenerate that file too, or
 it will describe a file nobody can download.
 
-### Step 5: Complete the Release
+### Step 6: Complete the Release
 
 Once you have reviewed the draft (non-public) release and
 found it to be ready for the user community, mark the release
