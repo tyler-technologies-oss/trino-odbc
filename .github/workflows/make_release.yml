@@ -16,7 +16,7 @@ on:
       version:
         description: 'Version to stamp on this trial build (not released)'
         required: false
-        default: '0.0.8'
+        default: '0.0.9'
 
 permissions:
   contents: write

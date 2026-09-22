@@ -273,7 +273,7 @@ this driver.
     1. `./build_x86_installer.ps1` (for a 32-bit installer)
 1. The finished installer will appear, ready to be used. The filename carries
    the version, so a locally built 64-bit installer is named for whatever
-   version was built, such as `TrinoODBC_x64_0.0.8.msi`. Builds that do not
+   version was built, such as `TrinoODBC_x64_0.0.9.msi`. Builds that do not
    come from the release workflow use the default version in `CMakeLists.txt`,
    which is the next version expected to be released. Pass `-Version` to the
    script if you need a specific version instead.

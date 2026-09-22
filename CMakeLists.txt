@@ -18,7 +18,7 @@ endif()
 # to accept it as an upgrade, so a default of 0.0.0 would leave a
 # locally built MSI unable to install over one from the releases
 # page. Bump this after each release, per HOW_TO_RELEASE.md.
-set(TRINO_ODBC_VERSION "0.0.8"
+set(TRINO_ODBC_VERSION "0.0.9"
     CACHE STRING "Driver version, as MAJOR.MINOR.PATCH")
 
 # RC is needed for the generated version resource that stamps the
