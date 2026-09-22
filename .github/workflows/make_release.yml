@@ -16,7 +16,7 @@ on:
       version:
         description: 'Version to stamp on this trial build (not released)'
         required: false
-        default: '0.0.0'
+        default: '0.0.8'
 
 permissions:
   contents: write
@@ -53,7 +53,12 @@ jobs:
 
           # Fail here with something readable rather than letting a
           # malformed version surface as a confusing CMake error.
-          if ! echo "${VERSION}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          #
+          # This has to match the whole string, not line by line. A
+          # value carrying a newline would otherwise pass and write a
+          # second line into GITHUB_ENV, setting an arbitrary variable
+          # for every step that follows.
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Version '${VERSION}' is not in MAJOR.MINOR.PATCH form." >&2
             exit 1
           fi
@@ -147,7 +152,7 @@ jobs:
           prerelease: false
           # Draft the release notes from the pull requests merged since
           # the previous release, giving the maintainer something to edit
-          # in step 4 of HOW_TO_RELEASE.md rather than a blank release.
+          # when reviewing the draft, rather than a blank release.
           generate_release_notes: true
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
