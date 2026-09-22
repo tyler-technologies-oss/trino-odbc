@@ -12,8 +12,10 @@ This open-source project is a partially complete ODBC driver for the
 [Trino distributed SQL engine](https://trino.io/). It implements the
 essential portions of the ODBC core specification required to enable
 Microsoft Excel and Microsoft PowerBI Desktop to connect to and
-execute queries against a Trino server using either External
-Authentication or OIDC Client Credential flow.
+execute queries against a Trino server. Four authentication methods
+are supported: no authentication, External Authentication, the OIDC
+Client Credential flow, and the OIDC Device Authorization (Device
+Flow) grant.
 The driver was developed to address a narrow gap in connectivity
 options for these tools on the Windows operating system within
 the Open Source Trino community.
@@ -26,9 +28,9 @@ Microsoft in any way.
 This driver is tested to work within a very narrow scope on Windows
 PCs and servers that utilize BI tools. Specifically, we target
 compatibility with Microsoft Excel and PowerBI Desktop with External
-Authentication and Client Credential Auth. Other tools, forms of
-authentication, and functionality of the ODBC specification were
-left unimplemented if not required by these tools. Functionality on
+Authentication, Client Credential Auth, and Device Flow. Other tools,
+forms of authentication, and functionality of the ODBC specification
+were left unimplemented if not required by these tools. Functionality on
 external systems or configurations may vary, and compatibility is
 not guaranteed.  For users needing cross-platform compatibility or
 full ODBC specification support, you should consider a feature-complete
@@ -55,11 +57,14 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
 - Only supports reading data, not writing/transacting data.
 - Does not support most forms of Trino authentication including password authentication
 - Does not support the ODBC wide-char unicode encoding (UCS-2 format, 16-bit characters)
-- Does not support Parameterized queries (SQLBindParameter, SQLParamData, SQLNumParams etc.)
+- Supports prepared statements (SQLPrepare, SQLExecute, SQLBindParameter) only
+  in a limited form. See the "Prepared Statements and Parameters" section below
+  for what is and is not supported.
 - Does not support ODBC conformance Level 1 or Level 2
   - [About Conformance Levels](https://learn.microsoft.com/en-us/sql/odbc/reference/develop-app/interface-conformance-levels)
   - It does not __completely__ support the Core conformance level, but is close.
-- Does not support SQL Transactions (SQLEndTran)
+- Does not support SQL Transactions. SQLEndTran is implemented as a no-op that
+  reports success; the Trino transaction headers are not handled.
 - Does not support binding and fetching multiple rows in a single call (SQLFetch with array size greater than 1)
 - Does not support non-sequential data fetching (SQLFetchScroll/SQLExtendedFetch)
 - Does not support iteratively discovering and enumerating connection attributes (SQLBrowseConnect)
@@ -70,8 +75,38 @@ There are many more limitations not mentioned here. The ODBC specification
 is quite large and it's very difficult to tell what ODBC features a
 given application will require by reading the spec. None of the above
 features are required for Microsoft PowerBI Desktop or Microsoft Excel to
-use the driver to read data from Trino using Client Credential Auth or
-External Authentication.
+use the driver to read data from Trino using Client Credential Auth,
+External Authentication, or Device Flow.
+
+
+### Prepared Statements and Parameters
+
+The driver implements prepared statements by mapping them onto Trino's
+own `PREPARE` and `EXECUTE` SQL statements. `SQLPrepare` submits a
+`PREPARE <generated name> FROM <your query>` statement to Trino and polls
+until Trino reports the statement as prepared. `SQLBindParameter` records
+the bound application buffer in the statement's parameter descriptor.
+`SQLExecute` then builds an `EXECUTE "<generated name>" USING ...`
+statement, rendering each bound parameter as a SQL literal.
+
+What this means in practice:
+
+- Parameters are interpolated into SQL text as literals by the driver,
+  not sent to Trino as separate parameter values. Strings are single-quoted
+  with embedded single quotes doubled.
+- Only input parameters are handled. The `InputOutputType` argument to
+  `SQLBindParameter` is logged but otherwise ignored, so output and
+  input/output parameters do not work.
+- Supported parameter C types are `SQL_C_CHAR`, `SQL_C_FLOAT`,
+  `SQL_C_DOUBLE`, `SQL_C_BIT`, the signed/unsigned tinyint, short, long,
+  and bigint types, `SQL_C_DATE`, `SQL_C_TIME`, and `SQL_C_TIMESTAMP`.
+  Any other C type causes `SQLExecute` to fail with `SQL_ERROR`.
+- Null parameters are not supported. `StrLen_or_IndPtr` is stored but is
+  not inspected when rendering the parameter, so `SQL_NULL_DATA` is not
+  honored.
+- `SQLNumParams`, `SQLParamData`, and `SQLPutData` are present but return
+  `SQL_ERROR`, so data-at-execution parameters do not work.
+- `SQLDescribeParam` is not implemented.
 
 
 ### Identifying Specific Limitations
@@ -104,7 +139,21 @@ https://visualstudio.microsoft.com/vs/community/.
 
 This ODBC driver makes use of the vcpkg tool for CMake. Follow the instructions
 [here](https://learn.microsoft.com/en-us/vcpkg/get_started/get-started?pivots=shell-cmd)
-to set it up.
+to set it up. `vcpkg.json` declares the dependencies that vcpkg will acquire:
+libcurl (with the openssl feature), nlohmann-json, and googletest.
+
+The driver is built as C++20 and uses `std::format`, so a toolchain with
+C++20 library support is required. `CMakePresets.json` defines four presets,
+which are the configurations this project is built and tested against:
+
+* `x64-debug`
+* `x64-release`
+* `x86-debug`
+* `x86-release`
+
+Debug configurations compile with the `DEBUG` preprocessor definition, which
+the test suite uses to pick which DSN to connect to. See "Testing and
+Debugging" below.
 
 The installer package makes use of WiX. Installation and configuration of WiX is
 described in the "Installing" section below.
@@ -208,7 +257,7 @@ this driver.
 1. Begin by installing the WiX tool on your system using the .NET SDK.
     1. Run `dotnet tool install --global wix --version 5.0.2`
 1. Add the WiX UI extension.
-    1. `wix extension add -g WixToolset.UI.wixext@5.0.2`
+    1. `wix extension add -g WixToolset.UI.wixext/5.0.2`
 1. Build the installer
     1. `cd install`
     1. `./build_x64_installer.ps1` (for a 64-bit installer)
