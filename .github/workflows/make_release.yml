@@ -65,16 +65,28 @@ jobs:
 
           echo "DRIVER_VERSION=${VERSION}" >> "$GITHUB_ENV"
 
-      - name: Get CMake
-        uses: lukka/get-cmake@latest
-
-      - name: Run vcpkg
-        uses: lukka/run-vcpkg@v11
+      # CMake, Ninja and vcpkg all ship with the windows runner image,
+      # so they are used from there rather than being installed. What
+      # is not cached is the dependency build: vcpkg compiles curl and
+      # openssl from source for each architecture, so keep the binary
+      # archives it produces between runs.
+      - name: Cache vcpkg binary archives
+        uses: actions/cache@v6
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-windows-
 
       - name: Run CMake and build x86
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x86
+          rem vcvarsall sets VCPKG_ROOT to the copy of vcpkg bundled
+          rem with Visual Studio, so this has to come afterwards to
+          rem reach the one the runner image provides. Setting it
+          rem before the call is silently overwritten.
+          set VCPKG_ROOT=%VCPKG_INSTALLATION_ROOT%
           cmake --preset x86-release -DTRINO_ODBC_VERSION=%DRIVER_VERSION%
           cmake --build --preset x86-release
 
@@ -82,6 +94,7 @@ jobs:
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          set VCPKG_ROOT=%VCPKG_INSTALLATION_ROOT%
           cmake --preset x64-release -DTRINO_ODBC_VERSION=%DRIVER_VERSION%
           cmake --build --preset x64-release
 
@@ -144,20 +157,23 @@ jobs:
         working-directory: ./installers
         run: sha256sum *.msi > SHA256SUMS.txt
 
+      # The GitHub CLI ships with the runner image, which keeps the
+      # release step on tooling this repository is allowed to use.
+      #
+      # --draft keeps the release private to maintainers until it is
+      # published by hand. --generate-notes drafts the changelog from
+      # the pull requests merged since the previous release, giving the
+      # maintainer something to edit rather than a blank release.
       - name: Create Release
-        uses: softprops/action-gh-release@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          draft: true
-          prerelease: false
-          # Draft the release notes from the pull requests merged since
-          # the previous release, giving the maintainer something to edit
-          # when reviewing the draft, rather than a blank release.
-          generate_release_notes: true
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          files: |
-            installers/*.msi
-            installers/SHA256SUMS.txt
-            installers/LICENSE.rtf
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Release ${GITHUB_REF_NAME}" \
+            --draft \
+            --generate-notes \
+            installers/*.msi \
+            installers/SHA256SUMS.txt \
+            installers/LICENSE.rtf \
             installers/third_party_licenses.txt
