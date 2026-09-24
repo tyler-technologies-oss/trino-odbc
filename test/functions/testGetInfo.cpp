@@ -165,14 +165,15 @@ TEST_F(GetInfoTest, TruncationIsReportedAndThenCleared) {
   SQLCHAR message[256]                    = {0};
   SQLINTEGER nativeError                  = 0;
   SQLSMALLINT messageLen                  = 0;
-  ret                                     = SQLGetDiagRec(SQL_HANDLE_DBC,
-                                                          this->hDbc,
-                                                          1,
-                                                          sqlState,
-                                                          &nativeError,
-                                                          message,
-                                                          sizeof(message),
-                                                          &messageLen);
+
+  ret = SQLGetDiagRec(SQL_HANDLE_DBC,
+                      this->hDbc,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
   ASSERT_EQ(ret, SQL_SUCCESS);
   ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "01004");
 

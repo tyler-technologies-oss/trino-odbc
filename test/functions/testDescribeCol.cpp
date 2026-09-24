@@ -204,14 +204,15 @@ TEST_F(SQLDescribColTest, TestColAttributeTruncationIsReadable) {
   SQLCHAR message[256]                    = {0};
   SQLINTEGER nativeError                  = 0;
   SQLSMALLINT messageLen                  = 0;
-  ret                                     = SQLGetDiagRec(SQL_HANDLE_STMT,
-                                                          hStmt,
-                                                          1,
-                                                          sqlState,
-                                                          &nativeError,
-                                                          message,
-                                                          sizeof(message),
-                                                          &messageLen);
+
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
   ASSERT_EQ(ret, SQL_SUCCESS);
   EXPECT_STREQ(reinterpret_cast<const char*>(sqlState), "01004");
 
