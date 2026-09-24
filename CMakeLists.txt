@@ -174,6 +174,7 @@ add_executable(TestDriver
     "test/functions/testDescribeCol.cpp"
     "test/functions/testGetConnectAttr.cpp"
     "test/functions/testGetInfo.cpp"
+    "test/functions/testGetStmtAttr.cpp"
     "test/functions/testTables.cpp"
     "test/memory/memoryReclamationTest.cpp"
     "test/performance/bindFetchPerformanceTest.cpp"

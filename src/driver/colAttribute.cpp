@@ -47,6 +47,8 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
 #pragma warning(pop)
   WriteLog(LL_TRACE, "Entering SQLColAttribute");
   Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statement->clearError();
 
   Descriptor* ird            = statement->impRowDesc;
   DescriptorField columnInfo = ird->getField(ColumnNumber);

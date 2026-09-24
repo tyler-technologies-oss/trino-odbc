@@ -42,3 +42,15 @@ TEST_F(GetConnectAttrTest, GetCurrentCatalog) {
   // Best clean up that dynamically allocated memory.
   delete[] buf;
 }
+
+TEST_F(GetConnectAttrTest, GetConnectionDead) {
+  // The Driver Manager asks for this when pooling connections, with
+  // an integer buffer and a BufferLength that says so. Start from a
+  // value that is neither answer so that a missed write shows up.
+  SQLUINTEGER dead = 12345;
+  SQLRETURN ret    = SQLGetConnectAttr(
+      this->hDbc, SQL_ATTR_CONNECTION_DEAD, &dead, SQL_IS_UINTEGER, nullptr);
+
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(dead, static_cast<SQLUINTEGER>(SQL_CD_FALSE));
+}

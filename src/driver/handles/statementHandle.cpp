@@ -164,6 +164,10 @@ ErrorInfo Statement::getError() {
   return this->errorInfo;
 }
 
+void Statement::clearError() {
+  this->errorInfo = ErrorInfo();
+}
+
 void Statement::setQueryId(const std::string& id) {
   queryId = id;
 }

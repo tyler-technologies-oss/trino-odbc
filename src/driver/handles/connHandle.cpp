@@ -12,6 +12,7 @@ Connection::~Connection() {
 
 void Connection::disconnect() {
   this->connectionConfig->disconnect();
+  this->connected = false;
 }
 
 std::string Connection::getServerVersion() {
@@ -49,4 +50,8 @@ void Connection::setError(ErrorInfo errorInfo) {
 
 ErrorInfo Connection::getError() {
   return this->errorInfo;
+}
+
+void Connection::clearError() {
+  this->errorInfo = ErrorInfo();
 }

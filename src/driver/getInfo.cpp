@@ -17,12 +17,16 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
                SQLSMALLINT BufferLength,
                _Out_opt_ SQLSMALLINT* StringLengthPtr) {
   Connection* connection = reinterpret_cast<Connection*>(ConnectionHandle);
+  // A new call starts with no diagnostics from the previous one.
+  connection->clearError();
   WriteLog(LL_TRACE, "Entering SQLGetInfo");
   WriteLog(LL_TRACE,
            "  Requesting information type: " + std::to_string(InfoType));
 
   if (InfoValue == nullptr) {
     WriteLog(LL_ERROR, "  ERROR: Exiting SQLGetInfo - InfoValue is null");
+    // HY009 = Invalid use of null pointer.
+    connection->setError(ErrorInfo("InfoValue is null", "HY009"));
     return SQL_ERROR;
   }
 

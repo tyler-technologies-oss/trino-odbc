@@ -151,3 +151,46 @@ TEST_F(GetInfoTest, GetSQLServerName) {
   std::string serverName(buf, buf + StrLen_or_IndPtr);
   ASSERT_EQ(serverName, std::string("localhost"));
 }
+
+TEST_F(GetInfoTest, TruncationIsReportedAndThenCleared) {
+  unsigned char buf[16];
+  SQLSMALLINT StrLen_or_IndPtr = 0;
+  SQLRETURN ret =
+      SQLGetInfo(this->hDbc, SQL_DRIVER_NAME, buf, 5, &StrLen_or_IndPtr);
+  ASSERT_EQ(ret, SQL_SUCCESS_WITH_INFO);
+
+  // The warning has to be readable, or the application can't tell
+  // why it got SQL_SUCCESS_WITH_INFO.
+  SQLCHAR sqlState[SQL_SQLSTATE_SIZE + 1] = {0};
+  SQLCHAR message[256]                    = {0};
+  SQLINTEGER nativeError                  = 0;
+  SQLSMALLINT messageLen                  = 0;
+  ret                                     = SQLGetDiagRec(SQL_HANDLE_DBC,
+                                                          this->hDbc,
+                                                          1,
+                                                          sqlState,
+                                                          &nativeError,
+                                                          message,
+                                                          sizeof(message),
+                                                          &messageLen);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "01004");
+
+  // The next call starts clean, so an unrelated failure reports its
+  // own cause rather than the earlier truncation. SQL_KEYWORDS is a
+  // valid information type, so the Driver Manager passes it through,
+  // but the driver doesn't implement it.
+  ret =
+      SQLGetInfo(this->hDbc, SQL_KEYWORDS, buf, sizeof(buf), &StrLen_or_IndPtr);
+  ASSERT_EQ(ret, SQL_ERROR);
+  ret = SQLGetDiagRec(SQL_HANDLE_DBC,
+                      this->hDbc,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY091");
+}
