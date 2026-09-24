@@ -56,6 +56,90 @@ TEST_F(SQLPrepareTest, TestPreparedExecutionWithoutParameters) {
 }
 
 
+// Power BI reads the result columns between SQLPrepare and SQLExecute,
+// so they must be available before the query runs.
+TEST_F(SQLPrepareTest, TestColumnsAreDescribedBeforeExecute) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = R"SQL(
+      SELECT custkey, name, acctbal
+      FROM tpch.sf1.customer
+      WHERE custkey = ?
+  )SQL";
+  ret               = SQLPrepare(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLSMALLINT columnCount = 0;
+  ret                     = SQLNumResultCols(hStmt, &columnCount);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(columnCount, 3);
+
+  SQLCHAR columnName[64];
+  SQLSMALLINT nameLength;
+  SQLSMALLINT dataType;
+  SQLULEN columnSize;
+  SQLSMALLINT decimalDigits;
+  SQLSMALLINT nullable;
+  ret = SQLDescribeCol(hStmt,
+                       2,
+                       columnName,
+                       sizeof(columnName),
+                       &nameLength,
+                       &dataType,
+                       &columnSize,
+                       &decimalDigits,
+                       &nullable);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(columnName), "name");
+  ASSERT_EQ(dataType, SQL_VARCHAR);
+
+  ret = SQLDescribeCol(hStmt,
+                       3,
+                       columnName,
+                       sizeof(columnName),
+                       &nameLength,
+                       &dataType,
+                       &columnSize,
+                       &decimalDigits,
+                       &nullable);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(columnName), "acctbal");
+  ASSERT_EQ(dataType, SQL_DOUBLE);
+
+  // The query still runs as usual afterwards.
+  SQLINTEGER custkey = 42;
+  ret                = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_SLONG,
+                         SQL_INTEGER,
+                         0,
+                         0,
+                         &custkey,
+                         0,
+                         NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLExecute(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFetch(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  SQLBIGINT result = 0;
+  ret = SQLGetData(hStmt, 1, SQL_C_SBIGINT, &result, sizeof(result), NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(result, 42);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
 TEST_F(SQLPrepareTest, TestPreparedExecutionWithInputParameters) {
   // Allocate statement handle
   SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);

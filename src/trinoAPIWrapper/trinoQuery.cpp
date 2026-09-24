@@ -318,7 +318,9 @@ void TrinoQuery::poll(TrinoQueryPollMode mode) {
   when waiting for prepared statements to be prepared. We need to handle any
   prepared statement headers that may come along with the response.
   */
-  if (this->completed) {
+  // A query with no nextUri has nothing more to return. A prepared
+  // query ends up here, because UntilQueryPrepared clears "completed".
+  if (this->completed or this->nextUri.empty()) {
     return;
   }
 
@@ -606,4 +608,31 @@ const TrinoOdbcErrorHandler::OdbcError& TrinoQuery::getError() const {
 
 const std::string TrinoQuery::getLastPreparedStatementName() {
   return this->lastPreparedStatement;
+}
+
+json TrinoQuery::describePreparedOutput() {
+  /*
+  Ask Trino for the result columns of the last prepared statement,
+  without running it. The PREPARE response has no columns, but
+  applications like Power BI read them between SQLPrepare and SQLExecute.
+
+  DESCRIBE OUTPUT returns one row per result column. Each row is turned
+  into the column JSON that Trino sends with query results. If Trino
+  rejects the query, this returns no columns and hasError() is true.
+  */
+  this->setQuery(
+      std::format("DESCRIBE OUTPUT \"{}\"", this->lastPreparedStatement));
+  this->post();
+  this->poll(ToCompletion);
+
+  json columns = json::array();
+  if (this->error) {
+    return columns;
+  }
+  // The row values are, in order: Column Name, Catalog, Schema, Table,
+  // Type, Type Size and Aliased.
+  for (const json& row : this->dataJson) {
+    columns.push_back(columnJsonFromTypeName(row[0], row[4]));
+  }
+  return columns;
 }

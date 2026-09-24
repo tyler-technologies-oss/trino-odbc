@@ -88,4 +88,5 @@ class TrinoQuery {
     const bool hasError() const;
     const TrinoOdbcErrorHandler::OdbcError& getError() const;
     const std::string getLastPreparedStatementName();
+    json describePreparedOutput();
 };

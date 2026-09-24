@@ -53,6 +53,23 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     // as executed yet. Instead we need to poll until trino has succesfully
     // prepared the query.
     trinoQuery->poll(UntilQueryPrepared);
+    if (trinoQuery->hasError()) {
+      WriteLog(LL_ERROR, "  ERROR: Trino rejected the query to prepare");
+      return SQL_ERROR;
+    }
+
+    // Load the result columns now, so SQLNumResultCols and SQLDescribeCol
+    // work before SQLExecute. The row descriptor is cleared because the
+    // DESCRIBE OUTPUT query filled it with its own columns.
+    WriteLog(LL_DEBUG, "  Describing Prepared Query Output");
+    json columns = trinoQuery->describePreparedOutput();
+    if (trinoQuery->hasError()) {
+      WriteLog(LL_ERROR, "  ERROR: Trino could not describe the query");
+      return SQL_ERROR;
+    }
+    trinoQuery->reset();
+    statement->getRowDescriptor()->reset();
+    trinoQuery->sideloadResponse({{"columns", columns}});
     statement->prepared = true;
 
     return SQL_SUCCESS;

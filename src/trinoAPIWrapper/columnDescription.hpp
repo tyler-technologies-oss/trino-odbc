@@ -20,3 +20,8 @@ class ColumnDescription {
     const std::string& getRawType() const;
     const json& getTypeArguments() const;
 };
+
+// Build the column JSON that Trino sends with query results, from a
+// column name and a type name like "decimal(38,9)". DESCRIBE OUTPUT
+// reports column types in that form.
+json columnJsonFromTypeName(std::string name, std::string typeName);
