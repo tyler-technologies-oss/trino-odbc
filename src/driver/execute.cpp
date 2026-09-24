@@ -108,6 +108,8 @@ SQLRETURN SQL_API SQLExecute(SQLHSTMT StatementHandle) {
   WriteLog(LL_DEBUG, "Entering SQLExecute");
 
   Statement* statementPtr = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statementPtr->clearError();
 
   try {
     Statement* statement = reinterpret_cast<Statement*>(StatementHandle);

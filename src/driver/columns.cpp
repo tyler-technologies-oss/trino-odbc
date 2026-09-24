@@ -122,6 +122,8 @@ SQLColumns(SQLHSTMT StatementHandle,
     return SQL_INVALID_HANDLE;
   }
   Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statement->clearError();
 
   std::string catalogName = stringFromChar(CatalogNameChars, NameLength1);
   std::string schemaName  = stringFromChar(SchemaNameChars, NameLength2);

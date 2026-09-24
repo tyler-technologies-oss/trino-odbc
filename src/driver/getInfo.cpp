@@ -17,14 +17,22 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
                SQLSMALLINT BufferLength,
                _Out_opt_ SQLSMALLINT* StringLengthPtr) {
   Connection* connection = reinterpret_cast<Connection*>(ConnectionHandle);
+  // A new call starts with no diagnostics from the previous one.
+  connection->clearError();
   WriteLog(LL_TRACE, "Entering SQLGetInfo");
   WriteLog(LL_TRACE,
            "  Requesting information type: " + std::to_string(InfoType));
 
   if (InfoValue == nullptr) {
     WriteLog(LL_ERROR, "  ERROR: Exiting SQLGetInfo - InfoValue is null");
+    // HY009 = Invalid use of null pointer.
+    connection->setError(ErrorInfo("InfoValue is null", "HY009"));
     return SQL_ERROR;
   }
+
+  // Set by the cases that return a string, if the caller's buffer
+  // was too small to hold all of it. Handled once after the switch.
+  bool truncated = false;
 
   switch (InfoType) {
     case SQL_MAX_DRIVER_CONNECTIONS: { // 0
@@ -38,7 +46,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
       break;
     }
     case SQL_DRIVER_NAME: { // 6
-      writeNullTermStringToPtr(InfoValue, "TrinoODBC", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "TrinoODBC", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_DRIVER_VER: { // 7
@@ -50,7 +59,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
                                                     TRINO_ODBC_VERSION_MAJOR,
                                                     TRINO_ODBC_VERSION_MINOR,
                                                     TRINO_ODBC_VERSION_PATCH);
-      writeNullTermStringToPtr(InfoValue, driverVersion, StringLengthPtr);
+      truncated                       = writeNullTermStringToPtr(
+          InfoValue, driverVersion, BufferLength, StringLengthPtr);
       break;
     }
     case SQL_SERVER_NAME: { // 13
@@ -59,7 +69,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
       // aliases, but for Trino this should suffice.
       const std::string serverName =
           connection->connectionConfig->getServerName();
-      writeNullTermStringToPtr(InfoValue, serverName, StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, serverName, BufferLength, StringLengthPtr);
       break;
     }
     case SQL_SEARCH_PATTERN_ESCAPE: { // 14
@@ -67,12 +78,14 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
       // x LIKE y ESCAPE '/'
       // but that's not a hard-coded constant like this driver is expecting.
       // So we return empty string = no escaping supported.
-      writeNullTermStringToPtr(InfoValue, "", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_DBMS_NAME: { // 17
       // What's the name of this DBMS? Trino!
-      writeNullTermStringToPtr(InfoValue, "Trino", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "Trino", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_DBMS_VER: { // 18
@@ -82,13 +95,15 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
       // put the actual version there.
       std::string rawServerVersion = connection->getServerVersion();
       std::string versionString    = "00.00.0001 " + rawServerVersion;
-      writeNullTermStringToPtr(InfoValue, versionString, StringLengthPtr);
+      truncated                    = writeNullTermStringToPtr(
+          InfoValue, versionString, BufferLength, StringLengthPtr);
       break;
     }
     case SQL_ACCESSIBLE_TABLES: { // 19
       // If a table is returned by SQLTables, is the user guaranteed
       // to have SELECT privileges on it? No
-      writeNullTermStringToPtr(InfoValue, "N", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "N", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_CONCAT_NULL_BEHAVIOR: { // 22
@@ -116,7 +131,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     case SQL_IDENTIFIER_QUOTE_CHAR: { // 29
       // TODO: What is the actual behavior?
       // PyODBC wants to know this.
-      writeNullTermStringToPtr(InfoValue, "\"", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "\"", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_MAX_SCHEMA_NAME_LEN: { // 32
@@ -137,19 +153,22 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     case SQL_OWNER_TERM: { // 39
       // What's the thing that owns tables called?
       // Trino calls that a "schema", (SQL-92 compliant).
-      writeNullTermStringToPtr(InfoValue, "schema", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "schema", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_QUALIFIER_NAME_SEPARATOR: { // 41
       // What's the thing that separates catalogs, schemas, and tables called?
       // Trino uses ".", (SQL-92 compliant).
-      writeNullTermStringToPtr(InfoValue, ".", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, ".", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_CATALOG_TERM: { // 42
       // What does trino call the "catalog" part of catalog.schema.table?
       // Trino uses "catalog", (SQL-92 compliant).
-      writeNullTermStringToPtr(InfoValue, "catalog", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "catalog", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_CONVERT_FUNCTIONS: { // 48
@@ -531,7 +550,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     }
     case SQL_DRIVER_ODBC_VER: { // 77
       // We'll target the latest version of ODBC
-      writeNullTermStringToPtr(InfoValue, "03.80", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "03.80", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_GETDATA_EXTENSIONS: { // 81
@@ -549,7 +569,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     }
     case SQL_COLUMN_ALIAS: { // 87
       // Does trino support column aliases? Yeah.
-      writeNullTermStringToPtr(InfoValue, "Y", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "Y", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_GROUP_BY: { // 88
@@ -568,7 +589,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     case SQL_ORDER_BY_COLUMNS_IN_SELECT: { // 90
       // Do columns in the order by clause need to be in the select list?
       // Nope
-      writeNullTermStringToPtr(InfoValue, "N", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "N", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_SCHEMA_USAGE: { // 91
@@ -595,7 +617,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
       // What special characters are allowed to be included in identifiers names
       // in Trino? Using these characters will require double-quoting identifier
       // names, but they're still allowed.
-      writeNullTermStringToPtr(InfoValue, "$-@", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "$-@", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_MAX_COLUMNS_IN_GROUP_BY: { // 97
@@ -639,7 +662,8 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     case SQL_NEED_LONG_DATA_LEN: { // 111
       // Does trino need to know how long the data values
       // being sent are _before_ they are sent? No.
-      writeNullTermStringToPtr(InfoValue, "N", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "N", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_CATALOG_LOCATION: { // 114
@@ -767,12 +791,14 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
     case SQL_DESCRIBE_PARAMETER: { // 10002
       // Can parameters be described? Yes. Trino supports
       // the `DESCRIBE INPUT` statement.
-      writeNullTermStringToPtr(InfoValue, "Y", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "Y", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_CATALOG_NAME: { // 10003
       // Does trino support catalogs? Yes.
-      writeNullTermStringToPtr(InfoValue, "Y", StringLengthPtr);
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "Y", BufferLength, StringLengthPtr);
       break;
     }
     case SQL_MAX_IDENTIFIER_LEN: { // 10005
@@ -819,5 +845,18 @@ _Success_(return == SQL_SUCCESS) SQLRETURN SQL_API
       return SQL_ERROR;
     }
   }
+
+  if (truncated) {
+    WriteLog(LL_WARN,
+             "  Exiting SQLGetInfo - the buffer provided for information "
+             "type " +
+                 std::to_string(InfoType) + " was too small");
+    // 01004 = String data, right truncated. The length written to
+    // StringLengthPtr is the length the application needs, so it can
+    // allocate that much and ask again.
+    connection->setError(ErrorInfo("String data, right truncated", "01004"));
+    return SQL_SUCCESS_WITH_INFO;
+  }
+
   return SQL_SUCCESS;
 };

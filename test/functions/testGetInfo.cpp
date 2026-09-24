@@ -1,13 +1,70 @@
 #include <windows.h>
 
+#include <cctype>
 #include <gtest/gtest.h>
 #include <sql.h>
 #include <sqlext.h>
 
 #include "../constants.hpp"
 #include "../fixtures/sqlDriverConnectFixture.hpp"
+#include "version.hpp"
 
 class GetInfoTest : public SQLDriverConnectFixture {};
+
+TEST_F(GetInfoTest, GetDriverVersion) {
+  unsigned char buf[16];
+  // Put some nonsense into the char array as a test.
+  std::fill_n(buf, 16, 'A');
+  SQLSMALLINT bufferLen        = 16;
+  SQLSMALLINT StrLen_or_IndPtr = 0;
+  SQLRETURN ret =
+      SQLGetInfo(this->hDbc, SQL_DRIVER_VER, buf, bufferLen, &StrLen_or_IndPtr);
+
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // ODBC mandates a `##.##.####` layout for this, which is ten
+  // characters excluding the null termination character.
+  ASSERT_EQ(StrLen_or_IndPtr, 10);
+  std::string driverVer(buf, buf + StrLen_or_IndPtr);
+
+  // Check the layout itself, rather than only the value, because the
+  // padding is what makes a version like 1.4.0 legal to report here.
+  ASSERT_EQ(driverVer[2], '.');
+  ASSERT_EQ(driverVer[5], '.');
+  for (int i : {0, 1, 3, 4, 6, 7, 8, 9}) {
+    ASSERT_TRUE(std::isdigit(static_cast<unsigned char>(driverVer[i])))
+        << "Position " << i << " of '" << driverVer << "' is not a digit";
+  }
+
+  // The reported version has to be the version that was compiled in.
+  // Parsing it back keeps this independent of how the driver formats
+  // it, and means a release does not need this test updated.
+  ASSERT_EQ(std::stoi(driverVer.substr(0, 2)), TRINO_ODBC_VERSION_MAJOR);
+  ASSERT_EQ(std::stoi(driverVer.substr(3, 2)), TRINO_ODBC_VERSION_MINOR);
+  ASSERT_EQ(std::stoi(driverVer.substr(6, 4)), TRINO_ODBC_VERSION_PATCH);
+}
+
+TEST_F(GetInfoTest, TruncatedInfoStringReportsTheLengthNeeded) {
+  // A buffer deliberately too small to hold "TrinoODBC" and its null
+  // termination character.
+  unsigned char buf[16];
+  std::fill_n(buf, 16, 'A');
+  SQLSMALLINT bufferLen        = 5;
+  SQLSMALLINT StrLen_or_IndPtr = 0;
+  SQLRETURN ret                = SQLGetInfo(
+      this->hDbc, SQL_DRIVER_NAME, buf, bufferLen, &StrLen_or_IndPtr);
+
+  // ODBC asks for SQL_SUCCESS_WITH_INFO here, along with the length
+  // the application would have needed rather than the length it got,
+  // so that it can allocate that much and ask again.
+  ASSERT_EQ(ret, SQL_SUCCESS_WITH_INFO);
+  ASSERT_EQ(StrLen_or_IndPtr, 9);
+
+  // Four characters and a terminator are all that fit. Anything past
+  // the buffer the application supplied must be left alone.
+  ASSERT_STREQ(reinterpret_cast<char*>(buf), "Trin");
+  ASSERT_EQ(buf[5], 'A');
+}
 
 TEST_F(GetInfoTest, GetODBCVersion) {
   unsigned char buf[16];
@@ -93,4 +150,48 @@ TEST_F(GetInfoTest, GetSQLServerName) {
   // from the char array to do this comparison.
   std::string serverName(buf, buf + StrLen_or_IndPtr);
   ASSERT_EQ(serverName, std::string("localhost"));
+}
+
+TEST_F(GetInfoTest, TruncationIsReportedAndThenCleared) {
+  unsigned char buf[16];
+  SQLSMALLINT StrLen_or_IndPtr = 0;
+  SQLRETURN ret =
+      SQLGetInfo(this->hDbc, SQL_DRIVER_NAME, buf, 5, &StrLen_or_IndPtr);
+  ASSERT_EQ(ret, SQL_SUCCESS_WITH_INFO);
+
+  // The warning has to be readable, or the application can't tell
+  // why it got SQL_SUCCESS_WITH_INFO.
+  SQLCHAR sqlState[SQL_SQLSTATE_SIZE + 1] = {0};
+  SQLCHAR message[256]                    = {0};
+  SQLINTEGER nativeError                  = 0;
+  SQLSMALLINT messageLen                  = 0;
+
+  ret = SQLGetDiagRec(SQL_HANDLE_DBC,
+                      this->hDbc,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "01004");
+
+  // The next call starts clean, so an unrelated failure reports its
+  // own cause rather than the earlier truncation. SQL_KEYWORDS is a
+  // valid information type, so the Driver Manager passes it through,
+  // but the driver doesn't implement it.
+  ret =
+      SQLGetInfo(this->hDbc, SQL_KEYWORDS, buf, sizeof(buf), &StrLen_or_IndPtr);
+  ASSERT_EQ(ret, SQL_ERROR);
+  ret = SQLGetDiagRec(SQL_HANDLE_DBC,
+                      this->hDbc,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY091");
 }

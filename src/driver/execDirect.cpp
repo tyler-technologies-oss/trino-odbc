@@ -19,6 +19,8 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
   }
 
   Statement* statementPtr = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statementPtr->clearError();
 
   try {
     Statement* statement  = (Statement*)StatementHandle;

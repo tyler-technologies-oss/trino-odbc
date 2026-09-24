@@ -153,6 +153,8 @@ SQLRETURN SQL_API SQLGetTypeInfo(SQLHSTMT StatementHandle,
                                  SQLSMALLINT DataType) {
   WriteLog(LL_TRACE, "Entering SQLGetTypeInfo");
   Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statement->clearError();
   WriteLog(LL_TRACE,
            "  Requesting type info for type code: " + std::to_string(DataType));
 

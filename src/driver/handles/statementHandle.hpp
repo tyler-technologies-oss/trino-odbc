@@ -52,6 +52,7 @@ class Statement {
 
     void setError(ErrorInfo errorInfo);
     ErrorInfo getError();
+    void clearError();
 
     void setQueryId(const std::string& id);
 };

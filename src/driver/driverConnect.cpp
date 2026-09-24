@@ -24,6 +24,8 @@ SQLRETURN SQL_API SQLDriverConnect(SQLHDBC ConnectionHandle,
                                    SQLUSMALLINT DriverCompletion) {
   WriteLog(LL_TRACE, "Entering SQLDriverConnect");
   Connection* connection = reinterpret_cast<Connection*>(ConnectionHandle);
+  // A new call starts with no diagnostics from the previous one.
+  connection->clearError();
 
   if (InConnectionChars == nullptr) {
     WriteLog(LL_ERROR, "  ERROR: Connection string input is null");

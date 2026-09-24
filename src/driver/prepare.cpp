@@ -18,6 +18,8 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
   }
 
   Statement* statementPtr = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statementPtr->clearError();
 
 
   try {

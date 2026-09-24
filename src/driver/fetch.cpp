@@ -78,6 +78,8 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
   WriteLog(LL_TRACE, "  Getting Handles");
   Statement* statement   = reinterpret_cast<Statement*>(StatementHandle);
   TrinoQuery* trinoQuery = statement->trinoQuery;
+  // A new call starts with no diagnostics from the previous one.
+  statement->clearError();
 
   WriteLog(LL_TRACE, "  Checking row counts and completion");
   bool trinoQueryCompleted   = trinoQuery->getIsCompleted();

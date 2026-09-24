@@ -38,6 +38,8 @@ SQLRETURN SQL_API SQLGetData(SQLHSTMT StatementHandle,
   */
   WriteLog(LL_TRACE, "Entering SQLGetData");
   Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statement->clearError();
 
   const std::vector<ColumnDescription>& columnDescriptions =
       statement->trinoQuery->getColumnDescriptions();

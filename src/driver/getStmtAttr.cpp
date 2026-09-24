@@ -25,6 +25,8 @@ SQLRETURN SQL_API SQLGetStmtAttr(SQLHSTMT StatementHandle,
   }
 
   Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statement->clearError();
 
   switch (Attribute) {
     case SQL_ATTR_ROW_NUMBER: { // 14
@@ -85,7 +87,9 @@ SQLRETURN SQL_API SQLGetStmtAttr(SQLHSTMT StatementHandle,
     default: {
       WriteLog(LL_ERROR,
                "  ERROR: Unsupported attribute: " + std::to_string(Attribute));
-      if (Value) {
+      // BufferLength is only a byte count when it's positive. Integer
+      // attributes pass 0 or a negative SQL_IS_* marker instead.
+      if (Value && BufferLength > 0) {
         memset(Value, 0, BufferLength);
       }
       if (StringLength) {

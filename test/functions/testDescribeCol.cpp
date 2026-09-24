@@ -182,3 +182,40 @@ TEST_F(SQLDescribColTest, TestDescribeTinyintColumn) {
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
+
+TEST_F(SQLDescribColTest, TestColAttributeTruncationIsReadable) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  setupTpchCustomerQuery(hStmt);
+
+  // Too small for "custkey" and its null termination character.
+  SQLCHAR colName[4];
+  SQLSMALLINT nameLen = 0;
+  ret                 = SQLColAttribute(
+      hStmt, 1, SQL_DESC_NAME, colName, sizeof(colName), &nameLen, nullptr);
+  ASSERT_EQ(ret, SQL_SUCCESS_WITH_INFO);
+  EXPECT_EQ(nameLen, 7);
+  EXPECT_STREQ(reinterpret_cast<const char*>(colName), "cus");
+
+  // The warning behind SQL_SUCCESS_WITH_INFO must be the first
+  // diagnostic record on the statement.
+  SQLCHAR sqlState[SQL_SQLSTATE_SIZE + 1] = {0};
+  SQLCHAR message[256]                    = {0};
+  SQLINTEGER nativeError                  = 0;
+  SQLSMALLINT messageLen                  = 0;
+
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_STREQ(reinterpret_cast<const char*>(sqlState), "01004");
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
