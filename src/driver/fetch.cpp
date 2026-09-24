@@ -109,8 +109,15 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
   if (trinoQueryCompleted and fetchedPosition == (trinoQueryRowCount - 1)) {
     // Handle the case that the query has been completed
     // and there is no more data
-    WriteLog(LL_TRACE, "  SQLFetch is indicating that no data remains");
     statement->trinoQuery->checkpointRowPosition(fetchedPosition);
+    // A query can fail after it has returned its columns. If it did,
+    // the rows the application has read are not the whole result, so
+    // report the error rather than a normal end of data.
+    if (trinoQuery->hasError()) {
+      WriteLog(LL_ERROR, "  ERROR: The Trino query failed during the fetch");
+      return SQL_ERROR;
+    }
+    WriteLog(LL_TRACE, "  SQLFetch is indicating that no data remains");
     return SQL_NO_DATA;
   } else if (fetchedPosition < (trinoQueryRowCount - 1)) {
     // Handle the case that data is waiting to be read.

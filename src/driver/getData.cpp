@@ -95,6 +95,18 @@ SQLRETURN SQL_API SQLGetData(SQLHSTMT StatementHandle,
                                                descriptorField.precision,
                                                descriptorField.scale);
 
+  // Nothing was written to the buffer or the length indicator, so
+  // the application must not treat either as holding a value.
+  if (not status.isSuccess) {
+    ErrorInfo errorInfo =
+        ErrorInfo("Restricted data type attribute violation: column " +
+                      std::to_string(columnNumber) +
+                      " cannot be read as C type " + std::to_string(cDataType),
+                  "07006");
+    statement->setError(errorInfo);
+    return SQL_ERROR;
+  }
+
   // If the client doesn't reserve enough buffer space to hold the variable
   // length data returned, we need to right-truncate it to fit the buffer
   // and return a different status to warn the client.

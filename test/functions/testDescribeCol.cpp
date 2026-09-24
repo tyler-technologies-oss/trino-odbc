@@ -219,3 +219,59 @@ TEST_F(SQLDescribColTest, TestColAttributeTruncationIsReadable) {
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
+
+TEST_F(SQLDescribColTest, TestColAttributeWritesWholeSQLLEN) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // BIGINT and BIT have negative type codes, so they only read back
+  // correctly if the driver writes every byte of the SQLLEN.
+  std::string query = "SELECT CAST(1 AS BIGINT) AS b, true AS f";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLLEN bigintType = 0;
+  ret               = SQLColAttribute(
+      hStmt, 1, SQL_DESC_CONCISE_TYPE, nullptr, 0, nullptr, &bigintType);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(bigintType, SQL_BIGINT);
+
+  SQLLEN booleanType = 0;
+  ret                = SQLColAttribute(
+      hStmt, 2, SQL_DESC_CONCISE_TYPE, nullptr, 0, nullptr, &booleanType);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(booleanType, SQL_BIT);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+TEST_F(SQLDescribColTest, TestExecDirectReportsRejectedQuery) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // Trino only rejects this after the POST, on a later poll.
+  std::string query = "SELECT * FROM tpch.sf1.no_such_table";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  // The Trino error must be readable as a diagnostic record.
+  SQLCHAR sqlState[SQL_SQLSTATE_SIZE + 1] = {0};
+  SQLCHAR message[1024]                   = {0};
+  SQLINTEGER nativeError                  = 0;
+  SQLSMALLINT messageLen                  = 0;
+
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_GT(messageLen, 0);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}

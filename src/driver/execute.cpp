@@ -137,6 +137,14 @@ SQLRETURN SQL_API SQLExecute(SQLHSTMT StatementHandle) {
     trinoQuery->setQuery(query);
     WriteLog(LL_DEBUG, "  POSTing Prepared Query");
     trinoQuery->post();
+    // As in SQLExecDirect, wait until Trino has either returned the
+    // columns or finished, so a failed EXECUTE is reported here.
+    WriteLog(LL_DEBUG, "  Polling until columns are loaded");
+    trinoQuery->poll(UntilColumnsLoaded);
+    if (trinoQuery->hasError()) {
+      WriteLog(LL_ERROR, "  ERROR: Trino rejected the prepared query");
+      return SQL_ERROR;
+    }
     WriteLog(LL_DEBUG, "  Setting prepared query to executed");
     statement->executed = true;
     return SQL_SUCCESS;
