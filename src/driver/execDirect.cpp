@@ -2,10 +2,15 @@
 #include <sql.h>
 #include <string.h>
 
+#include <format>
+
 #include "../trinoAPIWrapper/trinoQuery.hpp"
+#include "../util/parameterMarkers.hpp"
 #include "../util/stringFromChar.hpp"
+#include "../util/stringReplace.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
+#include "mappings/parameterToText.hpp"
 
 SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
                                 _In_reads_opt_(TextLength)
@@ -26,6 +31,34 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
     Statement* statement  = (Statement*)StatementHandle;
     std::string queryText = stringFromChar(StatementText, TextLength);
     WriteLog(LL_DEBUG, "  Query: " + queryText);
+
+    // Applications such as Report Builder bind parameters and then
+    // call SQLExecDirect, without SQLPrepare. Trino only accepts
+    // parameter values through EXECUTE, so run the query with
+    // EXECUTE IMMEDIATE and pass the bound values after USING.
+    // A query with markers but no bound parameters is sent as it is,
+    // since it may be a PREPARE statement whose markers are for later.
+    SQLSMALLINT markerCount =
+        static_cast<SQLSMALLINT>(countParameterMarkers(queryText));
+    Descriptor* paramDescriptor = statement->getParamDescriptor();
+    SQLSMALLINT boundCount      = countBoundParameters(paramDescriptor);
+    if (markerCount > 0 and boundCount > 0) {
+      if (boundCount < markerCount) {
+        WriteLog(LL_ERROR, "  ERROR: Not every parameter marker is bound");
+        ErrorInfo errorInfo(
+            std::format("The query has {} parameter markers, but only the "
+                        "first {} are bound",
+                        markerCount,
+                        boundCount),
+            "07002");
+        statementPtr->setError(errorInfo);
+        return SQL_ERROR;
+      }
+      queryText = std::format("EXECUTE IMMEDIATE '{}'\nUSING {}",
+                              replaceAll(queryText, "'", "''"),
+                              parameterListText(paramDescriptor, markerCount));
+      WriteLog(LL_DEBUG, "  Query with parameters: " + queryText);
+    }
     TrinoQuery* trinoQuery = statement->trinoQuery;
     WriteLog(LL_DEBUG, "  Setting Query");
     trinoQuery->setQuery(queryText);

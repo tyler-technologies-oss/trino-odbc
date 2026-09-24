@@ -33,6 +33,9 @@ class Statement {
     bool fetchExecuteConfirmed = false;
     // The underlying trino query utility class.
     TrinoQuery* trinoQuery;
+    // The SQL text given to SQLPrepare, before it was wrapped in a
+    // PREPARE statement. SQLExecute counts its parameter markers.
+    std::string preparedQuery;
     // The method used in SQLFetch for polling trino.
     TrinoQueryPollMode fetchPollMode = UntilNewData;
 

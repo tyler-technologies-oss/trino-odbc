@@ -144,3 +144,188 @@ TEST_F(SQLPrepareTest, TestPreparedExecutionWithInputParameters) {
   maybeReportStatementError(ret);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
+
+// Report Builder, and other .NET applications, bind parameters and
+// then call SQLExecDirect without ever calling SQLPrepare. They bind
+// dates as SQL_C_TYPE_TIMESTAMP and strings as SQL_C_WCHAR.
+TEST_F(SQLPrepareTest, TestExecDirectWithBoundTimestampParameters) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQL_TIMESTAMP_STRUCT startParam = {2026, 9, 1, 0, 0, 0, 0};
+  SQL_TIMESTAMP_STRUCT endParam   = {2026, 9, 24, 0, 0, 0, 0};
+  ret                             = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_TYPE_TIMESTAMP,
+                         SQL_TYPE_TIMESTAMP,
+                         23,
+                         3,
+                         &startParam,
+                         sizeof(startParam),
+                         NULL);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLBindParameter(hStmt,
+                         2,
+                         SQL_PARAM_INPUT,
+                         SQL_C_TYPE_TIMESTAMP,
+                         SQL_TYPE_TIMESTAMP,
+                         23,
+                         3,
+                         &endParam,
+                         sizeof(endParam),
+                         NULL);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = "SELECT date_diff('day', cast(? as timestamp), "
+                      "cast(? as timestamp))";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  ret = SQLFetch(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLBIGINT days = 0;
+  ret = SQLGetData(hStmt, 1, SQL_C_SBIGINT, &days, sizeof(days), NULL);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(days, 23);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+TEST_F(SQLPrepareTest, TestExecDirectWithBoundWideStringParameter) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // The quote checks that the value is escaped inside EXECUTE IMMEDIATE.
+  SQLWCHAR textParam[] = {'O', '\'', 'B', 'r', 'i', 'e', 'n', 0};
+  SQLLEN textLength    = 7 * sizeof(SQLWCHAR);
+  ret                  = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_WCHAR,
+                         SQL_WVARCHAR,
+                         7,
+                         0,
+                         textParam,
+                         sizeof(textParam),
+                         &textLength);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // The query's own string literal checks it survives EXECUTE IMMEDIATE.
+  std::string query = "SELECT concat(?, ' isn''t ?')";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  ret = SQLFetch(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  char result[64] = {'\0'};
+  ret = SQLGetData(hStmt, 1, SQL_C_CHAR, result, sizeof(result), NULL);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(result, "O'Brien isn't ?");
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+TEST_F(SQLPrepareTest, TestExecDirectWithTooFewBoundParameters) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLINTEGER value = 1;
+  ret              = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_SLONG,
+                         SQL_INTEGER,
+                         0,
+                         0,
+                         &value,
+                         0,
+                         NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // The driver notices the missing parameter without asking Trino.
+  std::string query = "SELECT ? + ?";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  SQLCHAR sqlState[6] = {'\0'};
+  SQLINTEGER nativeError;
+  SQLCHAR message[256];
+  SQLSMALLINT messageLength;
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLength);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "07002");
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+// ODBC lets an application bind parameters before SQLPrepare.
+TEST_F(SQLPrepareTest, TestParametersBoundBeforePrepare) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLINTEGER custkeyParam = 42;
+  ret                     = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_SLONG,
+                         SQL_INTEGER,
+                         0,
+                         0,
+                         &custkeyParam,
+                         0,
+                         NULL);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = "SELECT custkey FROM tpch.sf1.customer WHERE custkey = ?";
+  ret               = SQLPrepare(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLSMALLINT paramCount = 0;
+  ret                    = SQLNumParams(hStmt, &paramCount);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(paramCount, 1);
+
+  ret = SQLExecute(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  ret = SQLFetch(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLBIGINT result = 0;
+  ret = SQLGetData(hStmt, 1, SQL_C_SBIGINT, &result, sizeof(result), NULL);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(result, 42);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}

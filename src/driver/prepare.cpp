@@ -24,14 +24,14 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
 
   try {
     Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
-    // Clear out any previously bound parameters. Since this is a new prepared
-    // statement, we don't want bound parameters from a prior prepared statement
-    // to interfere.
-    statementPtr->impParamDesc->reset();
+    // Bound parameters are kept. ODBC lets an application bind them
+    // before or after SQLPrepare, and SQLExecute only passes as many
+    // as the query has markers, so older bindings don't interfere.
 
     // Write the PREPARE statement for this query.
     std::string queryText = stringFromChar(StatementText, TextLength);
     WriteLog(LL_DEBUG, "  Raw Query: " + queryText);
+    statement->preparedQuery = queryText;
     std::string preparedName = getRandomText(12);
     std::string preparedQueryPrefix =
         std::format("PREPARE \"{}\" FROM", preparedName);

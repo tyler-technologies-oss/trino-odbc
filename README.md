@@ -89,23 +89,33 @@ the bound application buffer in the statement's parameter descriptor.
 `SQLExecute` then builds an `EXECUTE "<generated name>" USING ...`
 statement, rendering each bound parameter as a SQL literal.
 
+Applications can also bind parameters and call `SQLExecDirect` without
+`SQLPrepare`, which is what .NET applications such as Report Builder do.
+The driver then runs `EXECUTE IMMEDIATE '<your query>' USING ...`, which
+needs Trino 418 or later. A query that has `?` markers but no bound
+parameters is sent to Trino unchanged.
+
 What this means in practice:
 
 - Parameters are interpolated into SQL text as literals by the driver,
   not sent to Trino as separate parameter values. Strings are single-quoted
   with embedded single quotes doubled.
+- The driver passes one bound parameter for each `?` marker in the query,
+  ignoring markers inside string literals, quoted identifiers, and
+  comments. If fewer parameters are bound than there are markers, the
+  query fails with SQLSTATE `07002`.
 - Only input parameters are handled. The `InputOutputType` argument to
   `SQLBindParameter` is logged but otherwise ignored, so output and
   input/output parameters do not work.
-- Supported parameter C types are `SQL_C_CHAR`, `SQL_C_FLOAT`,
-  `SQL_C_DOUBLE`, `SQL_C_BIT`, the signed/unsigned tinyint, short, long,
-  and bigint types, `SQL_C_DATE`, `SQL_C_TIME`, and `SQL_C_TIMESTAMP`.
-  Any other C type causes `SQLExecute` to fail with `SQL_ERROR`.
-- Null parameters are not supported. `StrLen_or_IndPtr` is stored but is
-  not inspected when rendering the parameter, so `SQL_NULL_DATA` is not
-  honored.
-- `SQLNumParams`, `SQLParamData`, and `SQLPutData` are present but return
-  `SQL_ERROR`, so data-at-execution parameters do not work.
+- Supported parameter C types are `SQL_C_CHAR`, `SQL_C_WCHAR`,
+  `SQL_C_FLOAT`, `SQL_C_DOUBLE`, `SQL_C_NUMERIC`, `SQL_C_BIT`, the
+  signed/unsigned tinyint, short, long, and bigint types, `SQL_C_BINARY`,
+  `SQL_C_GUID`, and the date, time, and timestamp types (both the
+  `SQL_C_TYPE_*` and the older `SQL_C_DATE`/`SQL_C_TIME`/`SQL_C_TIMESTAMP`
+  codes). Any other C type makes the query fail with `SQL_ERROR`.
+- A `StrLen_or_IndPtr` of `SQL_NULL_DATA` passes `NULL`.
+- `SQLParamData` and `SQLPutData` are present but return `SQL_ERROR`, so
+  data-at-execution parameters do not work.
 - `SQLDescribeParam` is not implemented.
 
 

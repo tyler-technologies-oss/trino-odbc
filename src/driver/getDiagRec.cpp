@@ -107,16 +107,16 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
         TrinoOdbcErrorHandler::OdbcError odbcErr =
             statement->trinoQuery->getError();
 
-        // Only set SqlStatePtr and NativeErrorPtr on the first chunk
-        if (trinoRecNumber == 1) {
-          // ODBC fixes the SQLSTATE buffer at five characters plus a
-          // null terminator, which is the only size it can be given.
-          writeNullTermStringToPtr<SQLINTEGER>(
-              SqlStatePtr, odbcErr.sqlstate, SQL_SQLSTATE_SIZE + 1, nullptr);
+        // A long Trino error is split across several records. Every
+        // record needs its own SQLSTATE, since applications print it
+        // for each one, and an unwritten buffer shows up as garbage.
+        // ODBC fixes the SQLSTATE buffer at five characters plus a
+        // null terminator, which is the only size it can be given.
+        writeNullTermStringToPtr<SQLINTEGER>(
+            SqlStatePtr, odbcErr.sqlstate, SQL_SQLSTATE_SIZE + 1, nullptr);
 
-          if (NativeErrorPtr) {
-            *NativeErrorPtr = odbcErr.native;
-          }
+        if (NativeErrorPtr) {
+          *NativeErrorPtr = odbcErr.native;
         }
 
         // Build all lines: summary (split by newlines) + stack (each with tab)
