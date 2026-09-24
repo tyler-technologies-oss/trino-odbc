@@ -47,3 +47,23 @@ TEST(StringTrimTest, HighBytesNoAssert) {
   trim(str);
   EXPECT_EQ(str, "\xC0\xC1hello\xFF");
 }
+
+TEST(RemoveTrailingSemicolonsTest, NoSemicolon) {
+  EXPECT_EQ(removeTrailingSemicolons("SELECT 1"), "SELECT 1");
+}
+
+TEST(RemoveTrailingSemicolonsTest, SemicolonAndWhitespace) {
+  EXPECT_EQ(removeTrailingSemicolons("SELECT 1 ; \r\n"), "SELECT 1");
+}
+
+TEST(RemoveTrailingSemicolonsTest, SeveralSemicolons) {
+  EXPECT_EQ(removeTrailingSemicolons("SELECT 1;;"), "SELECT 1");
+}
+
+TEST(RemoveTrailingSemicolonsTest, SemicolonInsideIsKept) {
+  EXPECT_EQ(removeTrailingSemicolons("SELECT ';' AS s;"), "SELECT ';' AS s");
+}
+
+TEST(RemoveTrailingSemicolonsTest, OnlySemicolons) {
+  EXPECT_EQ(removeTrailingSemicolons(" ; "), "");
+}

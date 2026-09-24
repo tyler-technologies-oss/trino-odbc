@@ -4,6 +4,7 @@
 
 #include "../util/randomStr.hpp"
 #include "../util/stringFromChar.hpp"
+#include "../util/stringTrim.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 
@@ -29,7 +30,8 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     // as the query has markers, so older bindings don't interfere.
 
     // Write the PREPARE statement for this query.
-    std::string queryText = stringFromChar(StatementText, TextLength);
+    std::string queryText =
+        removeTrailingSemicolons(stringFromChar(StatementText, TextLength));
     WriteLog(LL_DEBUG, "  Raw Query: " + queryText);
     statement->statementText = queryText;
     statement->prepared      = false;

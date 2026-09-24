@@ -8,6 +8,7 @@
 #include "../util/parameterMarkers.hpp"
 #include "../util/stringFromChar.hpp"
 #include "../util/stringReplace.hpp"
+#include "../util/stringTrim.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 #include "mappings/parameterToText.hpp"
@@ -31,8 +32,9 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
   statementPtr->trinoQuery->reset();
 
   try {
-    Statement* statement  = (Statement*)StatementHandle;
-    std::string queryText = stringFromChar(StatementText, TextLength);
+    Statement* statement = (Statement*)StatementHandle;
+    std::string queryText =
+        removeTrailingSemicolons(stringFromChar(StatementText, TextLength));
     WriteLog(LL_DEBUG, "  Query: " + queryText);
     // This replaces any prepared statement on the handle.
     statement->statementText = queryText;
