@@ -128,10 +128,11 @@ as ready (public).
 
 ### Step 7: Bump the development version
 
-Raise the default `TRINO_ODBC_VERSION` in `CMakeLists.txt`, and
-the matching defaults in `install/build_x64_installer.ps1`,
-`install/build_x86_installer.ps1`, and the `version` input of
-the release workflow, to the next version you expect to
+Raise the default `TRINO_ODBC_VERSION` in `CMakeLists.txt`, the
+matching defaults in `install/build_x64_installer.ps1` and
+`install/build_x86_installer.ps1`, the `version` input of the
+release workflow, and the example filename in the README section
+on building your own installer, to the next version you expect to
 release. Nothing about the release you just made depends on
 this, and getting it wrong cannot produce a bad release,
 because a real release always takes its version from the tag.

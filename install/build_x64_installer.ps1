@@ -10,7 +10,7 @@
 #>
 param(
   [ValidatePattern('^\d+\.\d+\.\d+$')]
-  [string]$Version = "0.0.8"
+  [string]$Version = "0.0.9"
 )
 
 $OriginalDirectory = Get-Location
