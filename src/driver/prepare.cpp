@@ -31,7 +31,8 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     // Write the PREPARE statement for this query.
     std::string queryText = stringFromChar(StatementText, TextLength);
     WriteLog(LL_DEBUG, "  Raw Query: " + queryText);
-    statement->preparedQuery = queryText;
+    statement->statementText = queryText;
+    statement->prepared      = false;
     std::string preparedName = getRandomText(12);
     std::string preparedQueryPrefix =
         std::format("PREPARE \"{}\" FROM", preparedName);
@@ -50,6 +51,7 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     // as executed yet. Instead we need to poll until trino has succesfully
     // prepared the query.
     trinoQuery->poll(UntilQueryPrepared);
+    statement->prepared = true;
 
     return SQL_SUCCESS;
 

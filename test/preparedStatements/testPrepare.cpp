@@ -329,3 +329,209 @@ TEST_F(SQLPrepareTest, TestParametersBoundBeforePrepare) {
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
+
+// Nothing in this test reaches Trino, so it runs without a server.
+TEST_F(SQLPrepareTest, TestNumParamsFollowsTheLatestStatement) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // Before any statement there is nothing to count.
+  SQLSMALLINT paramCount = -1;
+  ret                    = SQLNumParams(hStmt, &paramCount);
+  ASSERT_EQ(ret, SQL_ERROR);
+  SQLCHAR sqlState[6] = {'\0'};
+  SQLINTEGER nativeError;
+  SQLCHAR message[256];
+  SQLSMALLINT messageLength;
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLength);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY010");
+
+  // SQLExecute with nothing prepared is a sequence error too.
+  ret = SQLExecute(hStmt);
+  ASSERT_EQ(ret, SQL_ERROR);
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLength);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY010");
+
+  // Binding one parameter to a two marker query fails in the driver,
+  // before anything is posted, but the statement is still the latest.
+  SQLINTEGER value = 1;
+  ret              = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_SLONG,
+                         SQL_INTEGER,
+                         0,
+                         0,
+                         &value,
+                         0,
+                         NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  std::string query = "SELECT ?, ?";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_ERROR);
+  ret = SQLNumParams(hStmt, &paramCount);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(paramCount, 2);
+
+  // SQLExecDirect replaced any prepared statement, so SQLExecute
+  // must not run an older one.
+  ret = SQLExecute(hStmt);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+// A failure the driver finds itself must not repeat the Trino error
+// from an earlier query on the same handle.
+TEST_F(SQLPrepareTest, TestDriverErrorDoesNotRepeatEarlierTrinoError) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string badQuery = "SELECT * FROM tpch.sf1.no_such_table";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)badQuery.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  SQLINTEGER value = 1;
+  ret              = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_SLONG,
+                         SQL_INTEGER,
+                         0,
+                         0,
+                         &value,
+                         0,
+                         NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  std::string query = "SELECT ? + ?";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  SQLCHAR sqlState[6] = {'\0'};
+  SQLINTEGER nativeError;
+  SQLCHAR message[256];
+  SQLSMALLINT messageLength;
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLength);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "07002");
+
+  // The earlier missing table error is gone.
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      2,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLength);
+  ASSERT_EQ(ret, SQL_NO_DATA);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+// A PREPARE statement's markers are filled by a later EXECUTE, so
+// parameters left bound from earlier work must not be applied to it.
+TEST_F(SQLPrepareTest, TestExecDirectPrepareIgnoresBoundParameters) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLINTEGER leftover = 7;
+  ret                 = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_SLONG,
+                         SQL_INTEGER,
+                         0,
+                         0,
+                         &leftover,
+                         0,
+                         NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string prepare = "PREPARE bound_add_one FROM SELECT ? + 1";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)prepare.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  while (SQLFetch(hStmt) == SQL_SUCCESS) {
+  }
+
+  std::string execute = "EXECUTE bound_add_one USING 41";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)execute.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFetch(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  SQLBIGINT result = 0;
+  ret = SQLGetData(hStmt, 1, SQL_C_SBIGINT, &result, sizeof(result), NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(result, 42);
+  while (SQLFetch(hStmt) == SQL_SUCCESS) {
+  }
+
+  std::string deallocate = "DEALLOCATE PREPARE bound_add_one";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)deallocate.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  while (SQLFetch(hStmt) == SQL_SUCCESS) {
+  }
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+// A Trino error line longer than the whole buffer is truncated, and
+// that must be reported rather than passed off as the full message.
+TEST_F(SQLPrepareTest, TestTruncatedTrinoDiagnosticIsReported) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string badQuery = "SELECT * FROM tpch.sf1.no_such_table";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)badQuery.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  SQLCHAR sqlState[6] = {'\0'};
+  SQLINTEGER nativeError;
+  SQLCHAR message[8];
+  SQLSMALLINT messageLength = 0;
+  ret                       = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLength);
+  ASSERT_EQ(ret, SQL_SUCCESS_WITH_INFO);
+  // The length is that of the whole record, not of what fit.
+  ASSERT_GT(messageLength, static_cast<SQLSMALLINT>(sizeof(message) - 1));
+  ASSERT_EQ(strlen(reinterpret_cast<char*>(message)), sizeof(message) - 1);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}

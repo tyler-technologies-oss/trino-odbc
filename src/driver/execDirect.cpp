@@ -24,22 +24,29 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
   }
 
   Statement* statementPtr = reinterpret_cast<Statement*>(StatementHandle);
-  // A new call starts with no diagnostics from the previous one.
+  // A new call starts with no diagnostics from the previous one. That
+  // includes the error from the last Trino query, which would otherwise
+  // be reported again if this call fails before posting a new one.
   statementPtr->clearError();
+  statementPtr->trinoQuery->reset();
 
   try {
     Statement* statement  = (Statement*)StatementHandle;
     std::string queryText = stringFromChar(StatementText, TextLength);
     WriteLog(LL_DEBUG, "  Query: " + queryText);
+    // This replaces any prepared statement on the handle.
+    statement->statementText = queryText;
+    statement->prepared      = false;
 
     // Applications such as Report Builder bind parameters and then
     // call SQLExecDirect, without SQLPrepare. Trino only accepts
     // parameter values through EXECUTE, so run the query with
     // EXECUTE IMMEDIATE and pass the bound values after USING.
-    // A query with markers but no bound parameters is sent as it is,
-    // since it may be a PREPARE statement whose markers are for later.
+    // A PREPARE statement is always sent as it is, since its markers
+    // are filled by a later EXECUTE and not by anything bound now.
+    // So is a query with markers but no bound parameters.
     SQLSMALLINT markerCount =
-        static_cast<SQLSMALLINT>(countParameterMarkers(queryText));
+        static_cast<SQLSMALLINT>(countParametersToBind(queryText));
     Descriptor* paramDescriptor = statement->getParamDescriptor();
     SQLSMALLINT boundCount      = countBoundParameters(paramDescriptor);
     if (markerCount > 0 and boundCount > 0) {

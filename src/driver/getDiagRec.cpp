@@ -176,20 +176,15 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
           return SQL_NO_DATA;
         }
 
-        // Copy the chunk to the output buffer
-        size_t toCopy = std::min(chunk.size(), chunkSize);
-        if (MessageTextPtr && BufferLength > 0) {
-          strncpy_s(reinterpret_cast<char*>(MessageTextPtr),
-                    BufferLength,
-                    chunk.c_str(),
-                    toCopy);
-          reinterpret_cast<char*>(MessageTextPtr)[toCopy] = '\0';
-        }
-        if (TextLengthPtr) {
-          *TextLengthPtr = static_cast<SQLSMALLINT>(toCopy);
-        }
+        // Copy the chunk to the output buffer. Only a line too long for
+        // the whole buffer is truncated, and then the full length is
+        // reported so the application can ask again with more room.
+        // As in writeHandleError, the return code alone reports the
+        // truncation, since SQLGetDiagRec must not record a diagnostic.
+        bool truncated = writeNullTermStringToPtr(
+            MessageTextPtr, chunk, BufferLength, TextLengthPtr);
 
-        return SQL_SUCCESS;
+        return truncated ? SQL_SUCCESS_WITH_INFO : SQL_SUCCESS;
       } else {
         return SQL_NO_DATA;
       }

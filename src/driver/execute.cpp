@@ -11,11 +11,23 @@ SQLRETURN SQL_API SQLExecute(SQLHSTMT StatementHandle) {
   WriteLog(LL_DEBUG, "Entering SQLExecute");
 
   Statement* statementPtr = reinterpret_cast<Statement*>(StatementHandle);
-  // A new call starts with no diagnostics from the previous one.
+  // A new call starts with no diagnostics from the previous one. That
+  // includes the error from the last Trino query, which would otherwise
+  // be reported again if this call fails before posting a new one.
+  // The prepared statement itself survives, since Trino tracks it in
+  // connection headers that this doesn't touch.
   statementPtr->clearError();
+  statementPtr->trinoQuery->reset();
 
   try {
     Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
+    if (not statement->prepared) {
+      WriteLog(LL_ERROR, "  ERROR: SQLExecute called with no prepared query");
+      ErrorInfo errorInfo("SQLExecute was called without a prepared statement",
+                          "HY010");
+      statementPtr->setError(errorInfo);
+      return SQL_ERROR;
+    }
     std::string lastPreparedStatementName =
         statement->trinoQuery->getLastPreparedStatementName();
     std::string query =
@@ -25,7 +37,7 @@ SQLRETURN SQL_API SQLExecute(SQLHSTMT StatementHandle) {
     // Bindings outlive the statement they were made for, so there may
     // be more of them than markers, and Trino rejects any extras.
     SQLSMALLINT markerCount = static_cast<SQLSMALLINT>(
-        countParameterMarkers(statement->preparedQuery));
+        countParametersToBind(statement->statementText));
     Descriptor* paramDescriptor = statement->getParamDescriptor();
     if (markerCount > 0) {
       if (countBoundParameters(paramDescriptor) < markerCount) {
