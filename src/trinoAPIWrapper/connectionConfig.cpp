@@ -187,6 +187,10 @@ curlSetup:
   // handle is configured to run GET requests, no matter
   // how it was used before.
   curl_easy_setopt(this->curl, CURLOPT_HTTPGET, true);
+  // HTTPGET doesn't undo a custom method, such as the DELETE that
+  // cancels a query. Left in place, it would turn the next POST into
+  // a DELETE with a body, and Trino answers that with 405.
+  curl_easy_setopt(this->curl, CURLOPT_CUSTOMREQUEST, nullptr);
 
   // Set up any required headers if needed. We may need to handle
   // both auth headers and non-auth headers.
