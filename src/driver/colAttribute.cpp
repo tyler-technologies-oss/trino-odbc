@@ -137,7 +137,10 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_UNNAMED: { // 1012
       WriteLog(LL_TRACE, "  Getting SQL column named-ness");
       if (NumericAttributePtr) {
-        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = columnInfo.named;
+        // SQL_NAMED is 0 and SQL_UNNAMED is 1, the opposite of what
+        // the named flag holds, so it can't be written as it is.
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) =
+            columnInfo.named ? SQL_NAMED : SQL_UNNAMED;
       }
       break;
     }

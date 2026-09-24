@@ -242,6 +242,13 @@ TEST_F(SQLDescribColTest, TestColAttributeWritesWholeSQLLEN) {
   ASSERT_EQ(ret, SQL_SUCCESS);
   EXPECT_EQ(booleanType, SQL_BIT);
 
+  // Every Trino column has a name, and SQL_NAMED is 0, not 1.
+  SQLLEN unnamed = -1;
+  ret            = SQLColAttribute(
+      hStmt, 1, SQL_DESC_UNNAMED, nullptr, 0, nullptr, &unnamed);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(unnamed, SQL_NAMED);
+
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
