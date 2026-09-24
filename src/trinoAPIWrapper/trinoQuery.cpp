@@ -473,6 +473,12 @@ const bool TrinoQuery::getIsCompleted() const {
   return this->completed;
 }
 
+const bool TrinoQuery::hasMoreToPoll() const {
+  // A query that was reset but never posted has no nextUri, so polling
+  // it returns at once without new rows or completion.
+  return not this->completed and not this->nextUri.empty();
+}
+
 void TrinoQuery::sideloadResponse(json artificialResponse) {
   /*
    Most ODBC functions return a status code, not an actual result.

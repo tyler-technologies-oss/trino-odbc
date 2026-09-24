@@ -126,6 +126,17 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
     handleBoundColumns(statement);
     return SQL_SUCCESS;
 
+  } else if (not trinoQueryCompleted and not trinoQuery->hasMoreToPoll()) {
+    // There's no query to fetch from. This happens after SQLFreeStmt with
+    // SQL_CLOSE, or when SQLExecDirect or SQLExecute failed before posting
+    // a query. Polling would return nothing new, so fetching again would
+    // recurse forever.
+    WriteLog(LL_ERROR, "  ERROR: SQLFetch called with no query to fetch from");
+    ErrorInfo errorInfo("SQLFetch was called without an executed query",
+                        "HY010");
+    statement->setError(errorInfo);
+    return SQL_ERROR;
+
   } else if (not trinoQueryCompleted) {
     // Handle the case that the query is not yet completed, but there's
     // also more data to read. This indicates we need to poll Trino to

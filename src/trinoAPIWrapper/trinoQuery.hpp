@@ -76,6 +76,7 @@ class TrinoQuery {
     const int16_t getColumnCount();
     const std::vector<ColumnDescription>& getColumnDescriptions();
     const bool getIsCompleted() const;
+    const bool hasMoreToPoll() const;
     void sideloadResponse(json artificialResponse);
     void reset();
     void registerColumnDataChangeCallback(std::function<void(TrinoQuery*)> f);

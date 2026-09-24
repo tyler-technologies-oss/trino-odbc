@@ -187,6 +187,7 @@ add_executable(TestDriver
     "test/preparedStatements/testPrepare.cpp"
     "test/types/fetchBindTest.cpp"
     "test/types/fetchGetDataTest.cpp"
+    "test/unit/driver/descriptorHandleTest.cpp"
     "test/unit/trinoAPIWrapper/columnDescriptionTest.cpp"
     "test/unit/util/base64decoderTest.cpp"
     "test/unit/util/cryptUtilsTest.cpp"

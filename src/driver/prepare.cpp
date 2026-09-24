@@ -59,8 +59,10 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     }
 
     // Load the result columns now, so SQLNumResultCols and SQLDescribeCol
-    // work before SQLExecute. The row descriptor is cleared because the
-    // DESCRIBE OUTPUT query filled it with its own columns.
+    // work before SQLExecute. The row descriptor's metadata is cleared
+    // because the DESCRIBE OUTPUT query filled it with its own columns.
+    // The row descriptor also holds the application's column bindings,
+    // which must survive, so it isn't reset.
     WriteLog(LL_DEBUG, "  Describing Prepared Query Output");
     json columns = trinoQuery->describePreparedOutput();
     if (trinoQuery->hasError()) {
@@ -68,7 +70,7 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
       return SQL_ERROR;
     }
     trinoQuery->reset();
-    statement->getRowDescriptor()->reset();
+    statement->getRowDescriptor()->clearColumnMetadata();
     trinoQuery->sideloadResponse({{"columns", columns}});
     statement->prepared = true;
 

@@ -140,6 +140,75 @@ TEST_F(SQLPrepareTest, TestColumnsAreDescribedBeforeExecute) {
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
 
+// Column bindings last until SQLFreeStmt(SQL_UNBIND), so binding
+// before SQLPrepare must still fill the buffer on SQLFetch.
+TEST_F(SQLPrepareTest, TestColumnBindingsSurvivePrepare) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLBIGINT custkey = 0;
+  SQLLEN indicator  = 0;
+  ret               = SQLBindCol(
+      hStmt, 1, SQL_C_SBIGINT, &custkey, sizeof(custkey), &indicator);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = R"SQL(
+      SELECT custkey, name
+      FROM tpch.sf1.customer
+      WHERE custkey = 42
+  )SQL";
+  ret               = SQLPrepare(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLExecute(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFetch(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(custkey, 42);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+// SQLFetch on a statement with no query used to recurse until the
+// stack overflowed. This needs no server.
+TEST_F(SQLPrepareTest, TestFetchWithoutExecuteFails) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  ret = SQLFetch(hStmt);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  SQLCHAR sqlState[SQL_SQLSTATE_SIZE + 1] = {0};
+  SQLCHAR message[256]                    = {0};
+  SQLINTEGER nativeError                  = 0;
+  SQLSMALLINT messageLen                  = 0;
+  ret                                     = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      1,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY010");
+
+  // A failed SQLExecute leaves no query to fetch from either.
+  ret = SQLExecute(hStmt);
+  ASSERT_EQ(ret, SQL_ERROR);
+  ret = SQLFetch(hStmt);
+  ASSERT_EQ(ret, SQL_ERROR);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
 TEST_F(SQLPrepareTest, TestPreparedExecutionWithInputParameters) {
   // Allocate statement handle
   SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
