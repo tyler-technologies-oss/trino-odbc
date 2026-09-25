@@ -35,6 +35,7 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     WriteLog(LL_DEBUG, "  Raw Query: " + queryText);
     statement->statementText = queryText;
     statement->prepared      = false;
+    statement->executed      = false;
     std::string preparedName = getRandomText(12);
     std::string preparedQueryPrefix =
         std::format("PREPARE \"{}\" FROM", preparedName);
@@ -72,7 +73,8 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     trinoQuery->reset();
     statement->getRowDescriptor()->clearColumnMetadata();
     trinoQuery->sideloadResponse({{"columns", columns}});
-    statement->prepared = true;
+    statement->preparedColumns = columns;
+    statement->prepared        = true;
 
     return SQL_SUCCESS;
 

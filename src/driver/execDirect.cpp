@@ -30,6 +30,7 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
   // be reported again if this call fails before posting a new one.
   statementPtr->clearError();
   statementPtr->trinoQuery->reset();
+  statementPtr->executed = false;
 
   try {
     Statement* statement = (Statement*)StatementHandle;

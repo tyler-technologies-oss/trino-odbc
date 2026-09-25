@@ -40,6 +40,9 @@ class Statement {
     // Was statementText given to SQLPrepare, so SQLExecute can run it?
     // SQLExecDirect replaces any prepared statement, so it clears this.
     bool prepared = false;
+    // The result columns Trino described for the prepared statement,
+    // kept so closing the cursor doesn't lose them.
+    json preparedColumns;
     // The method used in SQLFetch for polling trino.
     TrinoQueryPollMode fetchPollMode = UntilNewData;
 
@@ -50,7 +53,7 @@ class Statement {
     Descriptor* appParamDesc;
     Descriptor* impParamDesc;
 
-    void reset();
+    void closeCursor();
     void terminate();
     Descriptor* getRowDescriptor();
     Descriptor* getParamDescriptor();

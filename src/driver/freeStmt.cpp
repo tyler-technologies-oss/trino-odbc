@@ -13,7 +13,7 @@ SQLRETURN SQL_API SQLFreeStmt(SQLHSTMT StatementHandle, SQLUSMALLINT Option) {
       WriteLog(
           LL_TRACE,
           "  Closing statement with SQL_CLOSE. The statement may be reused.");
-      stmt->reset();
+      stmt->closeCursor();
       return SQL_SUCCESS;
     }
     case (SQL_DROP): {

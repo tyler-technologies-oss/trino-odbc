@@ -81,6 +81,18 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
   // A new call starts with no diagnostics from the previous one.
   statement->clearError();
 
+  // There's no result to fetch from until the statement is executed.
+  // A prepared statement, or one whose cursor was closed, holds the
+  // described columns as a completed query with no rows, which would
+  // otherwise look like an empty result.
+  if (not statement->executed) {
+    WriteLog(LL_ERROR, "  ERROR: SQLFetch called before the query executed");
+    ErrorInfo errorInfo("SQLFetch was called without an executed query",
+                        "HY010");
+    statement->setError(errorInfo);
+    return SQL_ERROR;
+  }
+
   WriteLog(LL_TRACE, "  Checking row counts and completion");
   bool trinoQueryCompleted   = trinoQuery->getIsCompleted();
   int64_t trinoQueryRowCount = trinoQuery->getCurrentRowCount();

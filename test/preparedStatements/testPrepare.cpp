@@ -483,6 +483,142 @@ TEST_F(SQLPrepareTest, TestParametersBoundBeforePrepare) {
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
 
+// The usual loop of prepare once, then execute, fetch and close for each
+// value. Closing the cursor keeps the bound parameter and the described
+// columns. The parameter is text bound as SQL_BIGINT, which has to reach
+// Trino as a bigint to be compared with custkey.
+TEST_F(SQLPrepareTest, TestExecuteAgainAfterClosingCursor) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = "SELECT custkey FROM tpch.sf1.customer WHERE custkey = ?";
+  ret               = SQLPrepare(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  char custkeyParam[16] = {'\0'};
+  ret                   = SQLBindParameter(hStmt,
+                         1,
+                         SQL_PARAM_INPUT,
+                         SQL_C_CHAR,
+                         SQL_BIGINT,
+                         0,
+                         0,
+                         custkeyParam,
+                         sizeof(custkeyParam),
+                         NULL);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  for (int custkey : {42, 7}) {
+    strcpy_s(
+        custkeyParam, sizeof(custkeyParam), std::to_string(custkey).c_str());
+    ret = SQLExecute(hStmt);
+    maybeReportStatementError(ret);
+    ASSERT_EQ(ret, SQL_SUCCESS);
+
+    ret = SQLFetch(hStmt);
+    maybeReportStatementError(ret);
+    ASSERT_EQ(ret, SQL_SUCCESS);
+
+    SQLBIGINT result = 0;
+    ret = SQLGetData(hStmt, 1, SQL_C_SBIGINT, &result, sizeof(result), NULL);
+    maybeReportStatementError(ret);
+    ASSERT_EQ(ret, SQL_SUCCESS);
+    ASSERT_EQ(result, custkey);
+
+    ret = SQLFreeStmt(hStmt, SQL_CLOSE);
+    ASSERT_EQ(ret, SQL_SUCCESS);
+
+    SQLSMALLINT columnCount = 0;
+    ret                     = SQLNumResultCols(hStmt, &columnCount);
+    ASSERT_EQ(ret, SQL_SUCCESS);
+    ASSERT_EQ(columnCount, 1);
+  }
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+// A prepared statement holds its described columns, but no result
+// until SQLExecute runs it, and none again once its cursor is closed.
+// Fetching then is a function sequence error, not an empty result.
+TEST_F(SQLPrepareTest, TestFetchBeforeExecuteAndAfterCloseFails) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = "SELECT 1";
+  ret               = SQLPrepare(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLCHAR sqlState[SQL_SQLSTATE_SIZE + 1] = {0};
+  SQLINTEGER nativeError                  = 0;
+  ret                                     = SQLFetch(hStmt);
+  ASSERT_EQ(ret, SQL_ERROR);
+  ret = SQLGetDiagRec(
+      SQL_HANDLE_STMT, hStmt, 1, sqlState, &nativeError, NULL, 0, NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY010");
+
+  ret = SQLExecute(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFetch(hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  ret = SQLFreeStmt(hStmt, SQL_CLOSE);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFetch(hStmt);
+  ASSERT_EQ(ret, SQL_ERROR);
+  ret = SQLGetDiagRec(
+      SQL_HANDLE_STMT, hStmt, 1, sqlState, &nativeError, NULL, 0, NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY010");
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+// Closing the cursor forgets the closed result's column metadata, so a
+// decimal's scale isn't reported for the next query's varchar column.
+TEST_F(SQLPrepareTest, TestCloseClearsColumnMetadata) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string decimalQuery = "SELECT CAST(1.25 AS decimal(10, 2))";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)decimalQuery.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLSMALLINT decimalDigits = -1;
+  ret =
+      SQLDescribeCol(hStmt, 1, NULL, 0, NULL, NULL, NULL, &decimalDigits, NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(decimalDigits, 2);
+
+  ret = SQLFreeStmt(hStmt, SQL_CLOSE);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string varcharQuery = "SELECT 'abc'";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)varcharQuery.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  decimalDigits = -1;
+  ret =
+      SQLDescribeCol(hStmt, 1, NULL, 0, NULL, NULL, NULL, &decimalDigits, NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(decimalDigits, 0);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
 // Nothing in this test reaches Trino, so it runs without a server.
 TEST_F(SQLPrepareTest, TestNumParamsFollowsTheLatestStatement) {
   SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);

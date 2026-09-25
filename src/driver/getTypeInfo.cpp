@@ -215,6 +215,7 @@ SQLRETURN SQL_API SQLGetTypeInfo(SQLHSTMT StatementHandle,
     }
   }
   statement->trinoQuery->sideloadResponse(typeResponse);
+  statement->executed = true;
   WriteLog(LL_TRACE,
            "  SQLGetTypeInfo returning success for type id: " +
                std::to_string(DataType));

@@ -18,6 +18,7 @@ SQLRETURN SQL_API SQLExecute(SQLHSTMT StatementHandle) {
   // connection headers that this doesn't touch.
   statementPtr->clearError();
   statementPtr->trinoQuery->reset();
+  statementPtr->executed = false;
 
   try {
     Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
