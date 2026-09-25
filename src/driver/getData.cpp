@@ -35,32 +35,36 @@ static SQLRETURN getTextData(Statement* statement,
                              SQLPOINTER buffer,
                              SQLLEN bufferLength,
                              SQLLEN* strLen_or_IndPtr) {
-  std::string text = jsonValueToText(value);
-  if (getLogLevel() <= LL_TRACE) {
-    WriteLog(LL_TRACE, "  Text value: " + text);
-  }
-
-  // Count in code units: bytes of UTF-8, or 16-bit units of UTF-16.
-  std::u16string wideText;
-  size_t unitSize   = 1;
-  size_t totalUnits = text.size();
-  if (cDataType == SQL_C_WCHAR) {
-    wideText   = utf8ToUtf16(text);
-    unitSize   = sizeof(char16_t);
-    totalUnits = wideText.size();
-  }
-
   // Carry on from the last call only if it read this same column, the
-  // same way. Reading any other column starts over.
+  // same way. Reading any other column starts over, and converts the
+  // value to text once for all of its parts.
   if (statement->getDataColumn != columnNumber or
       statement->getDataCType != cDataType) {
     statement->resetGetDataPosition();
     statement->getDataColumn = columnNumber;
     statement->getDataCType  = cDataType;
+    statement->getDataText   = jsonValueToText(value);
+    if (getLogLevel() <= LL_TRACE) {
+      WriteLog(LL_TRACE, "  Text value: " + statement->getDataText);
+    }
+    if (cDataType == SQL_C_WCHAR) {
+      statement->getDataWideText = utf8ToUtf16(statement->getDataText);
+      statement->getDataText.clear();
+    }
   }
   if (statement->getDataFinished) {
     WriteLog(LL_TRACE, "  All of this value was already returned");
     return SQL_NO_DATA;
+  }
+
+  // Count in code units: bytes of UTF-8, or 16-bit units of UTF-16.
+  const std::string& text        = statement->getDataText;
+  const std::u16string& wideText = statement->getDataWideText;
+  size_t unitSize                = 1;
+  size_t totalUnits              = text.size();
+  if (cDataType == SQL_C_WCHAR) {
+    unitSize   = sizeof(char16_t);
+    totalUnits = wideText.size();
   }
 
   size_t offset    = statement->getDataOffset;
@@ -106,7 +110,10 @@ static SQLRETURN getTextData(Statement* statement,
     statement->setError(ErrorInfo("String data, right truncated", "01004"));
     return SQL_SUCCESS_WITH_INFO;
   }
+  // The value is no longer needed once all of it has been returned.
   statement->getDataFinished = true;
+  statement->getDataText.clear();
+  statement->getDataWideText.clear();
   return SQL_SUCCESS;
 }
 
