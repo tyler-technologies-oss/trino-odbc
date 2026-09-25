@@ -155,6 +155,14 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
             tempChunk += lines[j] + "\n";
             tempLen += lineLen;
           }
+          // A line longer than the whole buffer never fits, so give it
+          // a record of its own and let the copy below truncate it.
+          // Without this the loop never moves past that line, and every
+          // record number would be reported as present.
+          if (j == i) {
+            tempChunk += lines[j] + "\n";
+            ++j;
+          }
           if (currentChunk == static_cast<size_t>(trinoRecNumber)) {
             chunk = tempChunk;
             found = true;

@@ -31,6 +31,16 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
     trinoQuery->setQuery(queryText);
     WriteLog(LL_DEBUG, "  POSTing Query");
     trinoQuery->post();
+    // Trino accepts the POST before it has looked at the query, and
+    // reports a bad query on a later poll. Wait for the columns (or
+    // the end of the query) so a rejected query fails here, where
+    // applications check for it, instead of looking like an empty result.
+    WriteLog(LL_DEBUG, "  Polling until columns are loaded");
+    trinoQuery->poll(UntilColumnsLoaded);
+    if (trinoQuery->hasError()) {
+      WriteLog(LL_ERROR, "  ERROR: Trino rejected the query");
+      return SQL_ERROR;
+    }
     WriteLog(LL_DEBUG, "  Setting to executed");
     statement->executed = true;
     return SQL_SUCCESS;

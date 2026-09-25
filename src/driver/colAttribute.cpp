@@ -24,6 +24,11 @@ https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlcolattribute-func
  The signature of this function differs between 64-bit and 32-bit
  targets. For 32-bit, NumericAttributePtr is a SQLPOINTER, but for
  64-bit, its a SQLLEN*.
+
+ Either way, numeric attributes must be written as a whole SQLLEN.
+ Writing only 4 bytes on 64-bit leaves the upper half untouched, so a
+ negative type code such as SQL_BIGINT (-5) or SQL_BIT (-7) is read
+ back by the application as a large positive number.
  */
 #if defined(_WIN64)
 SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
@@ -63,7 +68,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       SQLSMALLINT odbcTypeCode =
           TRINO_RAW_TYPE_TO_ODBC_TYPE_CODE[columnInfo.trinoRawTypeName];
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = odbcTypeCode;
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = odbcTypeCode;
       }
       break;
     }
@@ -73,7 +78,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       // unsigned int64s, they are mapped to decimals.
       WriteLog(LL_TRACE, "  Getting SQL column signed-nessness");
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = columnInfo.isUnsigned;
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = columnInfo.isUnsigned;
       }
       break;
     }
@@ -87,7 +92,8 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_NUM_PREC_RADIX: { // 32
       WriteLog(LL_TRACE, "  Getting SQL column attribute NumPrecRadix");
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = columnInfo.numPrecRadix;
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) =
+            columnInfo.numPrecRadix;
       }
       break;
     }
@@ -96,28 +102,28 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       // How do we handle non-fixed length varchars?
       // For now, this defaults to SQL_NO_TOTAL (-4).
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = columnInfo.length;
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = columnInfo.length;
       }
       break;
     }
     case SQL_DESC_PRECISION: { // 1005
       WriteLog(LL_TRACE, "  Getting SQL column precision");
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = columnInfo.precision;
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = columnInfo.precision;
       }
       break;
     }
     case SQL_DESC_SCALE: { // 1006
       WriteLog(LL_TRACE, "  Getting SQL column scale");
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = columnInfo.scale;
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = columnInfo.scale;
       }
       break;
     }
     case SQL_DESC_NULLABLE: { // 1008
       WriteLog(LL_TRACE, "  Getting SQL column null-abilty");
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = columnInfo.nullable;
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = columnInfo.nullable;
       }
       break;
     }
@@ -131,7 +137,10 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_UNNAMED: { // 1012
       WriteLog(LL_TRACE, "  Getting SQL column named-ness");
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) = columnInfo.named;
+        // SQL_NAMED is 0 and SQL_UNNAMED is 1, the opposite of what
+        // the named flag holds, so it can't be written as it is.
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) =
+            columnInfo.named ? SQL_NAMED : SQL_UNNAMED;
       }
       break;
     }
@@ -140,8 +149,8 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       SQLULEN octetLength =
           TRINO_RAW_TYPE_TO_ODBC_SIZE_BYTES[columnInfo.trinoRawTypeName];
       if (NumericAttributePtr) {
-        *((SQLINTEGER*)NumericAttributePtr) =
-            static_cast<SQLINTEGER>(columnInfo.octetLength);
+        *reinterpret_cast<SQLLEN*>(NumericAttributePtr) =
+            static_cast<SQLLEN>(columnInfo.octetLength);
       }
       break;
     }

@@ -23,7 +23,23 @@ SQLRETURN copyStrToBuffer(const json& rowData,
                           SQLLEN* strLen_or_IndPtr,
                           std::string cTypeName) {
   try {
-    std::string value = rowData[columnNumber - 1].get<std::string>();
+    // Every type can be read as characters, and some applications do
+    // that for numbers (.NET reads BIGINT this way). Trino sends numbers
+    // and booleans as JSON numbers and booleans, not strings, so they
+    // have to be turned into text here.
+    const json& jsonValue = rowData[columnNumber - 1];
+    std::string value;
+    if (jsonValue.is_string()) {
+      value = jsonValue.get<std::string>();
+    } else if (jsonValue.is_boolean()) {
+      // ODBC represents a bit as "1" or "0" when converted to characters.
+      value = jsonValue.get<bool>() ? "1" : "0";
+    } else {
+      // Numbers print as themselves. Arrays, maps and rows come back
+      // as their JSON text, which is the closest thing they have to a
+      // string form.
+      value = jsonValue.dump();
+    }
     if (getLogLevel() <= LL_TRACE) {
       WriteLog(LL_TRACE, "  Detected bound " + cTypeName + " : " + value);
     }
@@ -323,13 +339,13 @@ ColumnToBufferStatus columnToBuffer(SQLSMALLINT cDataType,
       // dynamically based on the SQL data type, this is where it would happen.
       // For now, we're treating everything as a varchar. This seems to work
       // for GUIDs and Decimals as well.
-      copyStrToBuffer(rowData,
-                      columnNumber,
-                      buffer,
-                      bufferLength,
-                      strLen_or_IndPtr,
-                      "CHAR");
-      return ColumnToBufferStatus(true, true);
+      SQLRETURN ret = copyStrToBuffer(rowData,
+                                      columnNumber,
+                                      buffer,
+                                      bufferLength,
+                                      strLen_or_IndPtr,
+                                      "CHAR");
+      return ColumnToBufferStatus(SQL_SUCCEEDED(ret), true);
     }
     case SQL_C_NUMERIC: { // 2
       // Trino decimals return as strings, '123.456'
