@@ -56,12 +56,14 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
 - Only compiled for Microsoft Windows
 - Only supports reading data, not writing/transacting data.
 - Does not support most forms of Trino authentication including password authentication
-- Text is Unicode through the wide-character (`W`) ODBC functions and
-  `SQL_C_WCHAR` buffers, which is what .NET, Power BI and most Windows
-  applications use. Through the ANSI functions and `SQL_C_CHAR` buffers,
-  text is Trino's UTF-8 as it is, not converted to the Windows code page,
-  so an ANSI application sees non-ASCII characters as mojibake unless it
-  reads the bytes as UTF-8.
+- Non-ASCII text is only reliable through the wide-character (`W`) ODBC
+  functions and `SQL_C_WCHAR` buffers, which is what .NET, Power BI and most
+  Windows applications use. Through the ANSI functions and `SQL_C_CHAR`
+  buffers, text is Trino's UTF-8 as it is, not converted to the Windows code
+  page, so an ANSI application sees non-ASCII characters as mojibake unless
+  it reads the bytes as UTF-8. See "Unicode" below.
+- Text columns are reported as `SQL_VARCHAR`/`SQL_CHAR`, not
+  `SQL_WVARCHAR`/`SQL_WCHAR`, even though they can be read as `SQL_C_WCHAR`.
 - Supports prepared statements (SQLPrepare, SQLExecute, SQLBindParameter) only
   in a limited form. See the "Prepared Statements and Parameters" section below
   for what is and is not supported.
@@ -206,6 +208,25 @@ about the specific set of functions that are available from the driver.
 Not every driver implements every single function in the ODBC spec, and
 this driver is no exception. `SQLGetFunctions` provides a way for the
 driver manager to ask if a given function is supported or not.
+
+### Unicode
+
+The Windows Driver Manager treats a driver as a Unicode driver only if it
+exports `SQLConnectW`. This driver exports the wide-character (`W`) version
+of each ODBC function next to its ANSI version, and both share one
+implementation. Applications that call the `W` functions get UTF-16 text:
+SQL text, catalog names, column names, diagnostics and `SQL_C_WCHAR` data
+are converted to and from Trino's UTF-8 by the driver. If a driver exported
+only ANSI functions, the Driver Manager would convert `SQL_C_WCHAR` requests
+to `SQL_C_CHAR` and widen the result using the Windows code page, which
+garbles UTF-8 text (`café` becomes `cafÃ©`). See the
+[Contributing guide](./CONTRIBUTING.md) for what this means when changing
+the driver.
+
+`SQLGetData` returns text that doesn't fit the application's buffer in
+parts. Each call returns the next part with SQLSTATE `01004`, the last part
+returns `SQL_SUCCESS`, and a call after that returns `SQL_NO_DATA`. .NET
+reads strings of 2047 or more characters this way.
 
 ## Testing and Debugging
 
