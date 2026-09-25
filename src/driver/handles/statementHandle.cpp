@@ -158,6 +158,13 @@ SQLLEN Statement::getFetchedPosition() {
   return this->fetchedPosition;
 }
 
+void Statement::resetGetDataPosition() {
+  this->getDataColumn   = 0;
+  this->getDataCType    = 0;
+  this->getDataOffset   = 0;
+  this->getDataFinished = false;
+}
+
 void Statement::setFetchedPosition(SQLLEN pos) {
   if (this->impRowDesc->Field_RowsProcessedPtr) {
     *(this->impRowDesc->Field_RowsProcessedPtr) = pos;

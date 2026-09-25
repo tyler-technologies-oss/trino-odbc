@@ -65,3 +65,14 @@ SQLRETURN SQL_API SQLSetConnectAttr(SQLHDBC ConnectionHandle,
   WriteLog(LL_TRACE, "  Successful connect attribute setting.");
   return SQL_SUCCESS;
 }
+
+SQLRETURN SQL_API SQLSetConnectAttrW(SQLHDBC ConnectionHandle,
+                                     SQLINTEGER Attribute,
+                                     _In_reads_bytes_opt_(StringLength)
+                                         SQLPOINTER Value,
+                                     SQLINTEGER StringLength) {
+  // None of the attributes this driver supports are strings, so the
+  // Unicode version has nothing to convert.
+  WriteLog(LL_TRACE, "Entering SQLSetConnectAttrW");
+  return SQLSetConnectAttr(ConnectionHandle, Attribute, Value, StringLength);
+}

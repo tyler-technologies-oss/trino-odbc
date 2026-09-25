@@ -198,3 +198,140 @@ TEST(ValuePtrHelperTest, LengthPointerIsOptional) {
   EXPECT_FALSE(truncated);
   EXPECT_STREQ(s.c_str(), buffer);
 }
+
+TEST(ValuePtrHelperTest, WritesWideStringWithLengthInBytes) {
+  /*
+  Setup
+
+  The Unicode (W) functions take UTF-16. "café" is five UTF-8 bytes
+  but four UTF-16 characters, so its length is eight bytes.
+  */
+  std::string s       = "caf\xC3\xA9";
+  char16_t buffer[10] = {};
+  short len           = 0;
+
+  // Test
+  bool truncated =
+      writeNullTermWideStringToPtr(buffer, s, sizeof(buffer), &len);
+
+  // Assert
+  EXPECT_FALSE(truncated);
+  EXPECT_EQ(std::u16string(buffer), (std::u16string{u'c', u'a', u'f', 0x00E9}));
+  EXPECT_EQ(len, 4 * sizeof(char16_t));
+}
+
+TEST(ValuePtrHelperTest, TruncatesWideStringToBufferLength) {
+  /*
+  Setup
+
+  Six bytes hold two characters and a terminator. The reported
+  length is still the whole string's, and the guard characters past
+  the buffer are left alone.
+  */
+  std::string s      = "abcd";
+  char16_t buffer[5] = {u'x', u'x', u'x', u'x', u'x'};
+  short len          = 0;
+
+  // Test
+  bool truncated = writeNullTermWideStringToPtr(buffer, s, 6, &len);
+
+  // Assert
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(buffer[0], u'a');
+  EXPECT_EQ(buffer[1], u'b');
+  EXPECT_EQ(buffer[2], u'\0');
+  EXPECT_EQ(buffer[3], u'x'); // Guard character untouched
+  EXPECT_EQ(len, 4 * sizeof(char16_t));
+}
+
+TEST(ValuePtrHelperTest, WideBufferWithAnOddByteCountUsesWholeCharacters) {
+  /*
+  Setup
+
+  Seven bytes only hold three whole characters, so there's room for
+  two characters and a terminator. The seventh byte isn't written.
+  */
+  std::string s      = "abcd";
+  char16_t buffer[4] = {u'x', u'x', u'x', u'x'};
+  short len          = 0;
+
+  // Test
+  bool truncated = writeNullTermWideStringToPtr(buffer, s, 7, &len);
+
+  // Assert
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(buffer[1], u'b');
+  EXPECT_EQ(buffer[2], u'\0');
+  EXPECT_EQ(buffer[3], u'x'); // Guard character untouched
+}
+
+TEST(ValuePtrHelperTest, WideTruncationDoesNotSplitSurrogatePair) {
+  /*
+  Setup
+
+  "a😀" is three UTF-16 code units, since the emoji needs a surrogate
+  pair. A buffer with room for two code units and a terminator would
+  end on the first half of the pair, so only "a" is written.
+  */
+  std::string s      = "a\xF0\x9F\x98\x80";
+  char16_t buffer[4] = {u'x', u'x', u'x', u'x'};
+  short len          = 0;
+
+  // Test
+  bool truncated = writeNullTermWideStringToPtr(buffer, s, 6, &len);
+
+  // Assert
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(buffer[0], u'a');
+  EXPECT_EQ(buffer[1], u'\0');
+  EXPECT_EQ(len, 3 * sizeof(char16_t));
+}
+
+TEST(ValuePtrHelperTest, WideNullPointerReportsLengthOnly) {
+  std::string s = "caf\xC3\xA9";
+  short len     = 0;
+
+  // Test
+  bool truncated = writeNullTermWideStringToPtr(nullptr, s, 0, &len);
+
+  // Assert
+  EXPECT_FALSE(truncated);
+  EXPECT_EQ(len, 4 * sizeof(char16_t));
+}
+
+TEST(ValuePtrHelperTest, WideCharsVersionCountsCharacters) {
+  /*
+  Setup
+
+  Arguments that only ever hold strings, such as SQLDescribeColW's
+  column name, count characters instead of bytes. Three characters
+  of room leave space for two and a terminator.
+  */
+  std::string s      = "caf\xC3\xA9";
+  char16_t buffer[4] = {u'x', u'x', u'x', u'x'};
+  short len          = 0;
+
+  // Test
+  bool truncated = writeNullTermWideCharsToPtr(buffer, s, 3, &len);
+
+  // Assert
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(std::u16string(buffer), u"ca");
+  EXPECT_EQ(buffer[3], u'x'); // Guard character untouched
+  EXPECT_EQ(len, 4);
+}
+
+TEST(ValuePtrHelperTest, AnsiEncodingWritesUtf8) {
+  std::string s  = "caf\xC3\xA9";
+  char buffer[8] = {};
+  short len      = 0;
+
+  // Test
+  bool truncated =
+      writeNullTermCharsToPtr(buffer, s, sizeof(buffer), &len, AnsiText);
+
+  // Assert
+  EXPECT_FALSE(truncated);
+  EXPECT_STREQ(buffer, s.c_str());
+  EXPECT_EQ(len, 5);
+}

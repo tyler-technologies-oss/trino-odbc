@@ -10,30 +10,25 @@
 
 #include "../util/delimKvpHelper.hpp"
 #include "../util/stringFromChar.hpp"
+#include "../util/unicodeConversion.hpp"
+#include "../util/valuePtrHelper.hpp"
 #include "../util/writeLog.hpp"
 
-SQLRETURN SQL_API SQLDriverConnect(SQLHDBC ConnectionHandle,
-                                   SQLHWND Windowhandle,
-                                   _In_reads_(InConnectionChars)
-                                       SQLCHAR* InConnectionChars,
-                                   SQLSMALLINT StringLength1,
-                                   _Out_writes_opt_(OutConnectionChars)
-                                       SQLCHAR* OutConnectionChars,
-                                   SQLSMALLINT BufferLength,
-                                   _Out_opt_ SQLSMALLINT* StringLength2Ptr,
-                                   SQLUSMALLINT DriverCompletion) {
-  WriteLog(LL_TRACE, "Entering SQLDriverConnect");
+/*
+The work of SQLDriverConnect and SQLDriverConnectW. The input
+connection string has already been read as UTF-8. The output one is
+written for the kind of function that was called, and its
+BufferLength is a count of characters.
+*/
+static SQLRETURN driverConnect(SQLHDBC ConnectionHandle,
+                               std::string inputConnStr,
+                               SQLPOINTER OutConnectionChars,
+                               SQLSMALLINT BufferLength,
+                               SQLSMALLINT* StringLength2Ptr,
+                               TextEncoding encoding) {
   Connection* connection = reinterpret_cast<Connection*>(ConnectionHandle);
   // A new call starts with no diagnostics from the previous one.
   connection->clearError();
-
-  if (InConnectionChars == nullptr) {
-    WriteLog(LL_ERROR, "  ERROR: Connection string input is null");
-    return SQL_ERROR;
-  }
-
-  WriteLog(LL_TRACE, "  Reading input connection string");
-  std::string inputConnStr = stringFromChar(InConnectionChars, StringLength1);
 
   WriteLog(LL_TRACE, "  Input connection string was: " + inputConnStr);
 
@@ -76,33 +71,24 @@ SQLRETURN SQL_API SQLDriverConnect(SQLHDBC ConnectionHandle,
   WriteLog(LL_TRACE, "  Configuring connection");
   try {
     connection->configure(config);
+    connection->connected = true;
 
+    // The output connection string is the input one. It's written
+    // whether or not there's room for all of it, along with the length
+    // of the whole thing, and a short buffer is reported as truncation.
     WriteLog(LL_TRACE,
              "  Copying input connection string to output connection string");
-    // Check if there's enough space in OutConnectionString
-    if (OutConnectionChars && BufferLength > 0) {
-      if (static_cast<int>(inputConnStr.size() + 1) <= BufferLength) {
-        // Copy the entire string
-        inputConnStr.copy(reinterpret_cast<char*>(OutConnectionChars),
-                          inputConnStr.size());
-        WriteLog(LL_TRACE, "  Connection string copied successfully.");
-        // Ensure null-termination
-        OutConnectionChars[inputConnStr.size()] = '\0';
-      }
-    } else {
-      // OutConnectionString is NULL or BufferLength is 0, just return the
-      // length
-      WriteLog(LL_WARN, "  No output buffer provided.");
+    bool truncated = writeNullTermCharsToPtr(OutConnectionChars,
+                                             inputConnStr,
+                                             BufferLength,
+                                             StringLength2Ptr,
+                                             encoding);
+    if (truncated) {
+      WriteLog(LL_WARN, "  The output connection string was truncated");
+      // 01004 = String data, right truncated.
+      connection->setError(ErrorInfo("String data, right truncated", "01004"));
+      return SQL_SUCCESS_WITH_INFO;
     }
-
-    // If StringLength2Ptr is provided, set it to the length of the connection
-    // string
-    if (StringLength2Ptr) {
-      *StringLength2Ptr = static_cast<SQLSMALLINT>(inputConnStr.size());
-      WriteLog(LL_TRACE, "  Length of connection string set.");
-    }
-
-    connection->connected = true;
 
     WriteLog(LL_TRACE, "  Connection ready");
     return SQL_SUCCESS;
@@ -113,4 +99,57 @@ SQLRETURN SQL_API SQLDriverConnect(SQLHDBC ConnectionHandle,
     connection->setError(error);
     return SQL_ERROR;
   }
+}
+
+SQLRETURN SQL_API SQLDriverConnect(SQLHDBC ConnectionHandle,
+                                   SQLHWND Windowhandle,
+                                   _In_reads_(InConnectionChars)
+                                       SQLCHAR* InConnectionChars,
+                                   SQLSMALLINT StringLength1,
+                                   _Out_writes_opt_(OutConnectionChars)
+                                       SQLCHAR* OutConnectionChars,
+                                   SQLSMALLINT BufferLength,
+                                   _Out_opt_ SQLSMALLINT* StringLength2Ptr,
+                                   SQLUSMALLINT DriverCompletion) {
+  WriteLog(LL_TRACE, "Entering SQLDriverConnect");
+  if (InConnectionChars == nullptr) {
+    WriteLog(LL_ERROR, "  ERROR: Connection string input is null");
+    return SQL_ERROR;
+  }
+
+  WriteLog(LL_TRACE, "  Reading input connection string");
+  std::string inputConnStr = stringFromChar(InConnectionChars, StringLength1);
+  return driverConnect(ConnectionHandle,
+                       inputConnStr,
+                       OutConnectionChars,
+                       BufferLength,
+                       StringLength2Ptr,
+                       AnsiText);
+}
+
+SQLRETURN SQL_API SQLDriverConnectW(SQLHDBC ConnectionHandle,
+                                    SQLHWND Windowhandle,
+                                    _In_reads_(StringLength1)
+                                        SQLWCHAR* InConnectionChars,
+                                    SQLSMALLINT StringLength1,
+                                    _Out_writes_opt_(BufferLength)
+                                        SQLWCHAR* OutConnectionChars,
+                                    SQLSMALLINT BufferLength,
+                                    _Out_opt_ SQLSMALLINT* StringLength2Ptr,
+                                    SQLUSMALLINT DriverCompletion) {
+  WriteLog(LL_TRACE, "Entering SQLDriverConnectW");
+  if (InConnectionChars == nullptr) {
+    WriteLog(LL_ERROR, "  ERROR: Connection string input is null");
+    return SQL_ERROR;
+  }
+
+  WriteLog(LL_TRACE, "  Reading input connection string");
+  std::string inputConnStr = stringFromWideChar(
+      reinterpret_cast<char16_t*>(InConnectionChars), StringLength1);
+  return driverConnect(ConnectionHandle,
+                       inputConnStr,
+                       OutConnectionChars,
+                       BufferLength,
+                       StringLength2Ptr,
+                       UnicodeText);
 }

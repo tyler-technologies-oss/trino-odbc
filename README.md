@@ -56,7 +56,12 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
 - Only compiled for Microsoft Windows
 - Only supports reading data, not writing/transacting data.
 - Does not support most forms of Trino authentication including password authentication
-- Does not support the ODBC wide-char unicode encoding (UCS-2 format, 16-bit characters)
+- Text is Unicode through the wide-character (`W`) ODBC functions and
+  `SQL_C_WCHAR` buffers, which is what .NET, Power BI and most Windows
+  applications use. Through the ANSI functions and `SQL_C_CHAR` buffers,
+  text is Trino's UTF-8 as it is, not converted to the Windows code page,
+  so an ANSI application sees non-ASCII characters as mojibake unless it
+  reads the bytes as UTF-8.
 - Supports prepared statements (SQLPrepare, SQLExecute, SQLBindParameter) only
   in a limited form. See the "Prepared Statements and Parameters" section below
   for what is and is not supported.

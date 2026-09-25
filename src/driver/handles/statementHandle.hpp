@@ -46,6 +46,17 @@ class Statement {
     // The method used in SQLFetch for polling trino.
     TrinoQueryPollMode fetchPollMode = UntilNewData;
 
+    // SQLGetData returns a text value too long for the application's
+    // buffer in parts, over several calls. These track which column of
+    // the current row is being read that way, as which C type, how many
+    // characters of it have been returned, and whether all of it has.
+    // SQLFetch resets them for each new row.
+    SQLUSMALLINT getDataColumn = 0;
+    SQLSMALLINT getDataCType   = 0;
+    size_t getDataOffset       = 0;
+    bool getDataFinished       = false;
+    void resetGetDataPosition();
+
     // The ODBC protocol assumes these descriptors are
     // instantiated on all statements.
     Descriptor* appRowDesc;
