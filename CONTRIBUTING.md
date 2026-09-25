@@ -61,6 +61,25 @@ Pushing tags that follow semantic versioning create releases for
 this project. At this time, our maintainance team intends to manually review
 any contributions and create tags for releases on an as-needed basis.
 
+## Building and Testing Notes
+
+A few things about the build and the test suite that are easy to trip over:
+
+* Every source file is listed explicitly in `CMakeLists.txt`, once for the
+  `TrinoODBC` library and once for the `TestDriver` executable. A new `.cpp`
+  file has to be added there, or it is silently left out of the build.
+* If you configure from a Visual Studio developer prompt, set `VCPKG_ROOT`
+  after running `vcvars64.bat` (or `vcvars32.bat`), not before. The script
+  sets its own `VCPKG_ROOT`, pointing at the copy of vcpkg bundled with
+  Visual Studio, and overwrites yours.
+* `TestDriver.exe` links the driver directly rather than going through the
+  ODBC Driver Manager, so tests call the driver you just built, not the one
+  registered on your machine. The DSN still supplies connection settings.
+* Tests that never send a query to Trino, such as the unit tests under
+  `test/unit`, run without a Trino server. Use GoogleTest's filter to run a
+  subset, for example
+  `TestDriver.exe --gtest_filter=ValuePtrHelperTest.*`.
+
 ## Coding Conventions
 
 We have taken an opinionated stance on the C++ coding style in this
@@ -162,6 +181,14 @@ Code formatting in this repo is enforced by clang-format wherever possible.
 We use a code editor setting to remove trailing whitespace on every line in
 all cpp, hpp, yml, and md files. Please do the same prior to submitting a code or
 documentation contribution.
+
+Pull requests are checked by the `pull-request-code-scan` workflow, which
+runs clang-format over every `.cpp` and `.hpp` file that differs from
+`main`, and fails if that changes anything. The workflow installs whatever
+clang-format the `ubuntu-latest` runner packages, which is currently
+version 18 on Ubuntu 24.04. Other major versions sometimes format the same
+code differently, so run the same major version locally before pushing.
+One way to get it is `pip install clang-format==18.1.8`.
 
 ### Variable Naming Convention
 
