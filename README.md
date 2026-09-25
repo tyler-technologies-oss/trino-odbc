@@ -41,7 +41,7 @@ commercially available ODBC driver for Trino.
 For PowerBI users, there is also the
 [Trino PowerBI Connector](https://github.com/CreativeDataEU/PowerBITrinoConnector)
 project, which works well for many use cases. In our experience,
-it was found to exhibit slow loading performance on datasets contaning
+it was found to exhibit slow loading performance on datasets containing
 hundreds of millions of rows of data. This appears to be
 a limitation in the performance of the Microsoft Power Query
 language, and is not a reflection on the quality of work
@@ -150,7 +150,7 @@ This is relatively easy to do.
 
 From here, you'll often find precisely what features were required
 but were not yet implemented. Once you know what's missing, a review
-of the the ODBC specification's documentation typically explains
+of the ODBC specification's documentation typically explains
 what the missing functionality accomplishes. From there, it's
 just a matter of writing the code to enable it.
 
@@ -189,7 +189,7 @@ Most applications that use ODBC do so through a driver manager rather than inter
 directly with the driver. The driver manager is provided by the operating system or
 an operating system package (like UnixODBC). The driver manager intercepts calls
 from an application to execute queries, read data, describe columns, or otherwise.
-Then the driver manager, with knowledge of the actual capabilties of any given
+Then the driver manager, with knowledge of the actual capabilities of any given
 driver, translates those calls into the appropriate function calls for the
 driver. It functions as a kind of normalizing intermediary. This allows
 application writers not to need to understand the differences between the ODBC 2,
@@ -228,48 +228,66 @@ parts. Each call returns the next part with SQLSTATE `01004`, the last part
 returns `SQL_SUCCESS`, and a call after that returns `SQL_NO_DATA`. .NET
 reads strings of 2047 or more characters this way.
 
+## Building
+
+Run these commands from a Visual Studio developer command prompt, opened
+with `vcvars64.bat` for a 64-bit build or `vcvars32.bat` for a 32-bit one:
+
+```
+set VCPKG_ROOT=C:\path\to\vcpkg
+cmake --preset x64-release
+cmake --build out\build\x64-release
+```
+
+Set `VCPKG_ROOT` after running `vcvars*.bat`, not before. The Visual Studio
+environment script sets its own `VCPKG_ROOT`, which replaces yours.
+
+The build puts `TrinoODBC.dll` and the test executable `TestDriver.exe` in
+`out\build\<preset>`. Every source file is listed explicitly in
+`CMakeLists.txt`, so a new `.cpp` file must be added there, once for the
+driver and once for the test executable, or it won't be built.
+
 ## Testing and Debugging
 
-The best way to test the driver is to install the build output DLL as
-the driver for your system. ODBC drivers are installed entirely by
+`TestDriver.exe` is a GoogleTest executable. Run it with no arguments to
+run the whole suite, or pass `--gtest_filter` to run part of it:
+
+```
+out\build\x64-release\TestDriver.exe --gtest_filter=GetInfoTest.GetDriverVersion
+out\build\x64-release\TestDriver.exe --gtest_filter=ValuePtrHelperTest.*
+```
+
+`TestDriver.exe` links the driver it was built with directly, so the tests
+always exercise the code you just compiled. They do not go through the ODBC
+Driver Manager or use whichever driver is registered on the machine.
+
+Tests that talk to a server connect to a DSN named `TrinoTestRelease`, or
+`TrinoTestDebug` in debug builds (see `test/constants.cpp`). The test suite
+assumes this DSN points at a vanilla Trino instance, because tests query
+`tpch.sf1.*`. Running a standalone copy of the
+[Trino Docker Image](https://hub.docker.com/r/trinodb/trino) is enough.
+The DSN only supplies connection settings, so it must be visible to the
+test executable's bitness: create it with the 64-bit ODBC Data Source
+Administrator for an x64 build, or the 32-bit one for an x86 build.
+
+Some tests run without a server: the suites in `test/unit`, and the tests
+that never run a query, such as most of `GetInfoTest`, `GetConnectAttrTest`
+and `GetStmtAttrTest`. Tests that run a query fail if no server is
+reachable.
+
+To try the driver in an application such as Excel or Power BI, register
+the build output DLL as a driver. ODBC drivers are installed entirely by
 manipulating the Windows Registry. Set the keys as described in
-`install/RegisterTrinoODBC.reg`, but substituting the path to the
-TrinoODBC.dll file generated in the build output directory. Once this
-is done, you should see TrinoODBC show up in your ODBC Data Sources
-window (for both 32 and 64 bit). Every time you build this tool,
-the system driver is effectively updated because it points to
-the build output. This makes for a rapid code -> build -> test
-loop. Note that these registry keys are the same ones used by
-the installed release driver, so following this process will replace
-the driver installed in your system with the driver built by compiling
-this code.
-
-The recommended approach to testing the driver's code is to create separate
-driver installations (by editing install/RegisterTrinoODBC.reg) pointing
-to debug and release builds of the driver. Name the drivers `TrinoODBCDebug`
-and `TrinoODBCRelease`. Then, create separate DSNs targeting those drivers
-named  `TrinoTestDebug` and `TrinoTestRelease`. The test executable is
-already configured to select between DSNs with those two names based on
-the presence of the `DEBUG` preprocessor definition, meaning your tests
-will automatically target the correct driver based on your build
-configuration.
-
-To get started, the easiest thing to do is to pick a processor
-bitness and stick with it until your feature is developed. If you decide
-to test both x64 and x86 builds, make sure the Driver/DSN you are testing
-has a bitness that matches the test suite you wish to run. It's very easy
-to get this mixed up and test the wrong driver, since the ODBC Driver Manager
-is unaware that it's being used in a test suite and should target a specific
-build output unless explicitly configured to do so.
-
-The test suite assumes this DSN is configured for a vanilla
-trino instance. Running a standalone copy of the
-[Trino Docker Image](https://hub.docker.com/r/trinodb/trino)
-provides a trino instance that is sufficient to run the suite.
-
-Once you have a driver and DSN installed and configured,
-run the `TestDriver.exe` executable to run the full test suite
-for this driver.
+`install/RegisterTrinoODBC.reg`, but substitute the path to the
+`TrinoODBC.dll` file in the build output directory. Once this is done,
+TrinoODBC shows up in the ODBC Data Sources window of the matching
+bitness, and every build updates the driver the application uses. The
+DSN setup dialog also comes from the registered driver, so you need a
+registered driver to create the test DSN. Note that these registry keys
+are the same ones used by the installed release driver, so following this
+process replaces any installed driver with the one you built. To keep
+both, edit `install/RegisterTrinoODBC.reg` to register the build under a
+different driver name.
 
 
 ## Installing a Windows ODBC Driver
@@ -284,11 +302,11 @@ There are three ways to install this driver.
 
 See the releases page for the most recent release of this driver. Each release
 publishes a 64-bit and a 32-bit installer named for that version, such as
-`TrinoODBC_x64_1.4.0.msi`, along with a `SHA256SUMS.txt` file listing the hash
+`TrinoODBC_x64_0.0.8.msi`, along with a `SHA256SUMS.txt` file listing the hash
 of each installer.
 
 To confirm a download arrived intact, run
-`Get-FileHash -Algorithm SHA256 .\TrinoODBC_x64_1.4.0.msi` in PowerShell and
+`Get-FileHash -Algorithm SHA256 .\TrinoODBC_x64_0.0.8.msi` in PowerShell and
 compare the hash it prints against the matching line in `SHA256SUMS.txt`.
 PowerShell prints the hash in upper case and `SHA256SUMS.txt` records it in
 lower case, so compare the two without regard to case.
@@ -377,7 +395,7 @@ a 32 or 64-bit driver.
 1. [WiX](https://wixtoolset.org/)
     * [Microsoft Reciprocal License (MS-RL)](https://wixtoolset.org/docs/about/)
     * Note: This license does not apply to the TrinoODBC driver because it is
-      used soely to bundle/package the driver into an installer package. WiX
+      used solely to bundle/package the driver into an installer package. WiX
       itself is used in unmodified form.
 
 ### Testing Dependencies
