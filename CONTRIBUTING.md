@@ -80,6 +80,25 @@ A few things about the build and the test suite that are easy to trip over:
   subset, for example
   `TestDriver.exe --gtest_filter=ValuePtrHelperTest.*`.
 
+## Unicode and the `W` Functions
+
+The driver is a Unicode driver: it exports the wide-character (`W`) version
+of each ODBC function next to its ANSI version. The README's "Unicode"
+section explains why that matters. A few things to keep in mind when
+changing the driver:
+
+* When you add a new ODBC function, add its `W` version too. The ANSI and
+  `W` versions share one implementation, and the `W` version converts
+  between UTF-16 and UTF-8 at the boundary using `src/util/unicodeConversion`.
+* `W` functions don't all measure lengths the same way. Some count bytes
+  (`SQLGetInfoW`, connection and statement attributes) and others count
+  characters (`SQLDescribeColW`, `SQLGetDiagRecW`, SQL text). Check the
+  ODBC reference page for each argument rather than assuming.
+* Source files are compiled without `/utf-8`, so MSVC reads a non-ASCII
+  character in a string literal using the Windows code page, not as UTF-8.
+  Keep string literals ASCII, and write other characters with `\x` escapes
+  (for example `"caf\xC3\xA9"`) or as UTF-16 code units.
+
 ## Coding Conventions
 
 We have taken an opinionated stance on the C++ coding style in this

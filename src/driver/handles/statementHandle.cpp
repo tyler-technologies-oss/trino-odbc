@@ -111,6 +111,8 @@ void Statement::closeCursor() {
   this->executed              = false;
   this->fetchExecuteConfirmed = false;
   this->fetchedPosition       = -1;
+  // Frees the text of any value SQLGetData was reading.
+  this->resetGetDataPosition();
   this->trinoQuery->reset();
   this->getRowDescriptor()->clearColumnMetadata();
   if (this->prepared) {
@@ -156,6 +158,15 @@ Descriptor* Statement::getParamDescriptor() {
 
 SQLLEN Statement::getFetchedPosition() {
   return this->fetchedPosition;
+}
+
+void Statement::resetGetDataPosition() {
+  this->getDataColumn   = 0;
+  this->getDataCType    = 0;
+  this->getDataOffset   = 0;
+  this->getDataFinished = false;
+  this->getDataText.clear();
+  this->getDataWideText.clear();
 }
 
 void Statement::setFetchedPosition(SQLLEN pos) {

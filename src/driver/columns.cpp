@@ -3,6 +3,7 @@
 #include <sqlext.h>
 
 #include "../util/stringFromChar.hpp"
+#include "../util/unicodeConversion.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 
@@ -141,4 +142,36 @@ SQLColumns(SQLHSTMT StatementHandle,
   statement->trinoQuery->post();
   statement->executed = true;
   return SQL_SUCCESS;
+}
+
+SQLRETURN SQL_API
+SQLColumnsW(SQLHSTMT StatementHandle,
+            _In_reads_opt_(NameLength1) SQLWCHAR* CatalogNameChars,
+            SQLSMALLINT NameLength1,
+            _In_reads_opt_(NameLength2) SQLWCHAR* SchemaNameChars,
+            SQLSMALLINT NameLength2,
+            _In_reads_opt_(NameLength3) SQLWCHAR* TableNameChars,
+            SQLSMALLINT NameLength3,
+            _In_reads_opt_(NameLength4) SQLWCHAR* ColumnNameChars,
+            SQLSMALLINT NameLength4) {
+  WriteLog(LL_TRACE, "Entering SQLColumnsW");
+  // A missing name reads as an empty string, which is how SQLColumns
+  // treats one too.
+  std::string catalogName = stringFromWideChar(
+      reinterpret_cast<char16_t*>(CatalogNameChars), NameLength1);
+  std::string schemaName = stringFromWideChar(
+      reinterpret_cast<char16_t*>(SchemaNameChars), NameLength2);
+  std::string tableName = stringFromWideChar(
+      reinterpret_cast<char16_t*>(TableNameChars), NameLength3);
+  std::string columnName = stringFromWideChar(
+      reinterpret_cast<char16_t*>(ColumnNameChars), NameLength4);
+  return SQLColumns(StatementHandle,
+                    reinterpret_cast<SQLCHAR*>(catalogName.data()),
+                    static_cast<SQLSMALLINT>(catalogName.size()),
+                    reinterpret_cast<SQLCHAR*>(schemaName.data()),
+                    static_cast<SQLSMALLINT>(schemaName.size()),
+                    reinterpret_cast<SQLCHAR*>(tableName.data()),
+                    static_cast<SQLSMALLINT>(tableName.size()),
+                    reinterpret_cast<SQLCHAR*>(columnName.data()),
+                    static_cast<SQLSMALLINT>(columnName.size()));
 }

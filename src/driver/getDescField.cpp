@@ -61,3 +61,21 @@ SQLRETURN SQL_API SQLGetDescField(
   }
   return SQL_SUCCESS;
 }
+
+SQLRETURN SQL_API SQLGetDescFieldW(
+    SQLHDESC DescriptorHandle,
+    SQLSMALLINT RecNumber,
+    SQLSMALLINT FieldIdentifier,
+    _Out_writes_opt_(_Inexpressible_(BufferLength)) SQLPOINTER Value,
+    SQLINTEGER BufferLength,
+    _Out_opt_ SQLINTEGER* StringLength) {
+  // None of the fields this driver supports are strings, so the
+  // Unicode version has nothing to convert.
+  WriteLog(LL_TRACE, "Entering SQLGetDescFieldW");
+  return SQLGetDescField(DescriptorHandle,
+                         RecNumber,
+                         FieldIdentifier,
+                         Value,
+                         BufferLength,
+                         StringLength);
+}

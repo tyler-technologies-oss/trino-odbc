@@ -14,3 +14,14 @@ SQLRETURN SQL_API SQLSetDescField(SQLHDESC DescriptorHandle,
   WriteLog(LL_ERROR, " ERROR: SQLSetDescField is unimplemented");
   return SQL_ERROR;
 }
+
+SQLRETURN SQL_API SQLSetDescFieldW(SQLHDESC DescriptorHandle,
+                                   SQLSMALLINT RecNumber,
+                                   SQLSMALLINT FieldIdentifier,
+                                   _In_reads_(_Inexpressible_(BufferLength))
+                                       SQLPOINTER Value,
+                                   SQLINTEGER BufferLength) {
+  WriteLog(LL_TRACE, "Entering SQLSetDescFieldW");
+  WriteLog(LL_ERROR, " ERROR: SQLSetDescFieldW is unimplemented");
+  return SQL_ERROR;
+}

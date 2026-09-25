@@ -8,12 +8,27 @@
 
 #include "dateAndTimeUtils.hpp"
 #include "decimalHelper.hpp"
+#include "valuePtrHelper.hpp"
 #include "writeLog.hpp"
 
 ColumnToBufferStatus::ColumnToBufferStatus(bool isSuccess,
                                            bool isVariableLength) {
   this->isSuccess        = isSuccess;
   this->isVariableLength = isVariableLength;
+}
+
+std::string jsonValueToText(const json& jsonValue) {
+  if (jsonValue.is_string()) {
+    return jsonValue.get<std::string>();
+  }
+  if (jsonValue.is_boolean()) {
+    // ODBC represents a bit as "1" or "0" when converted to characters.
+    return jsonValue.get<bool>() ? "1" : "0";
+  }
+  // Numbers print as themselves. Arrays, maps and rows come back as
+  // their JSON text, which is the closest thing they have to a string
+  // form.
+  return jsonValue.dump();
 }
 
 SQLRETURN copyStrToBuffer(const json& rowData,
@@ -23,23 +38,7 @@ SQLRETURN copyStrToBuffer(const json& rowData,
                           SQLLEN* strLen_or_IndPtr,
                           std::string cTypeName) {
   try {
-    // Every type can be read as characters, and some applications do
-    // that for numbers (.NET reads BIGINT this way). Trino sends numbers
-    // and booleans as JSON numbers and booleans, not strings, so they
-    // have to be turned into text here.
-    const json& jsonValue = rowData[columnNumber - 1];
-    std::string value;
-    if (jsonValue.is_string()) {
-      value = jsonValue.get<std::string>();
-    } else if (jsonValue.is_boolean()) {
-      // ODBC represents a bit as "1" or "0" when converted to characters.
-      value = jsonValue.get<bool>() ? "1" : "0";
-    } else {
-      // Numbers print as themselves. Arrays, maps and rows come back
-      // as their JSON text, which is the closest thing they have to a
-      // string form.
-      value = jsonValue.dump();
-    }
+    std::string value = jsonValueToText(rowData[columnNumber - 1]);
     if (getLogLevel() <= LL_TRACE) {
       WriteLog(LL_TRACE, "  Detected bound " + cTypeName + " : " + value);
     }
@@ -65,6 +64,33 @@ SQLRETURN copyStrToBuffer(const json& rowData,
   } catch (const std::exception& e) {
     WriteLog(LL_ERROR,
              "  ERROR: extracting " + cTypeName + " value for column index: " +
+                 std::to_string(columnNumber) + " - " + e.what());
+    return SQL_ERROR;
+  }
+}
+
+/*
+The SQL_C_WCHAR version of copyStrToBuffer. Trino's UTF-8 text is
+written as UTF-16, which is what Windows applications such as .NET
+read strings as. The buffer length and the length reported to the
+application are both in bytes.
+*/
+SQLRETURN copyWideStrToBuffer(const json& rowData,
+                              SQLULEN columnNumber,
+                              void* buffer,
+                              SQLLEN bufferLength,
+                              SQLLEN* strLen_or_IndPtr) {
+  try {
+    std::string value = jsonValueToText(rowData[columnNumber - 1]);
+    if (getLogLevel() <= LL_TRACE) {
+      WriteLog(LL_TRACE, "  Detected bound WCHAR : " + value);
+    }
+    // Truncation is reported by SQLGetData, from the length written here.
+    writeNullTermWideStringToPtr(buffer, value, bufferLength, strLen_or_IndPtr);
+    return SQL_SUCCESS;
+  } catch (const std::exception& e) {
+    WriteLog(LL_ERROR,
+             "  ERROR: extracting WCHAR value for column index: " +
                  std::to_string(columnNumber) + " - " + e.what());
     return SQL_ERROR;
   }
@@ -345,6 +371,11 @@ ColumnToBufferStatus columnToBuffer(SQLSMALLINT cDataType,
                                       bufferLength,
                                       strLen_or_IndPtr,
                                       "CHAR");
+      return ColumnToBufferStatus(SQL_SUCCEEDED(ret), true);
+    }
+    case SQL_C_WCHAR: { // -8
+      SQLRETURN ret = copyWideStrToBuffer(
+          rowData, columnNumber, buffer, bufferLength, strLen_or_IndPtr);
       return ColumnToBufferStatus(SQL_SUCCEEDED(ret), true);
     }
     case SQL_C_NUMERIC: { // 2
