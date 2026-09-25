@@ -76,6 +76,7 @@ class TrinoQuery {
     const int16_t getColumnCount();
     const std::vector<ColumnDescription>& getColumnDescriptions();
     const bool getIsCompleted() const;
+    const bool hasMoreToPoll() const;
     void sideloadResponse(json artificialResponse);
     void reset();
     void registerColumnDataChangeCallback(std::function<void(TrinoQuery*)> f);
@@ -88,4 +89,5 @@ class TrinoQuery {
     const bool hasError() const;
     const TrinoOdbcErrorHandler::OdbcError& getError() const;
     const std::string getLastPreparedStatementName();
+    json describePreparedOutput();
 };

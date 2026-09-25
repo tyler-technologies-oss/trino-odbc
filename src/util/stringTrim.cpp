@@ -19,3 +19,14 @@ void trim(std::string& str) {
       }).base();
   str.erase(lastRealChar, str.end());
 }
+
+std::string removeTrailingSemicolons(std::string query) {
+  auto lastRealChar =
+      std::ranges::find_if_not(
+          query.rbegin(),
+          query.rend(),
+          [](unsigned char c) { return c == ';' or std::isspace(c); })
+          .base();
+  query.erase(lastRealChar, query.end());
+  return query;
+}

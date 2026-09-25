@@ -98,15 +98,24 @@ Statement::~Statement() {
 }
 
 /*
-Reset gets this statement ready to be used again.
+Close the cursor by discarding the results of the last execution, so
+the statement can be executed again. This is SQLFreeStmt(SQL_CLOSE).
+Bound parameters and bound columns are kept, since those last until
+SQL_RESET_PARAMS and SQL_UNBIND, and so is a prepared statement. The
+column metadata of the closed result is cleared, since the next query
+doesn't overwrite all of it. The columns SQLPrepare described are then
+loaded again, so SQLNumResultCols and SQLDescribeCol still work before
+the next SQLExecute.
 */
-void Statement::reset() {
+void Statement::closeCursor() {
   this->executed              = false;
   this->fetchExecuteConfirmed = false;
   this->fetchedPosition       = -1;
   this->trinoQuery->reset();
-  this->impParamDesc->reset();
-  this->impRowDesc->reset();
+  this->getRowDescriptor()->clearColumnMetadata();
+  if (this->prepared) {
+    this->trinoQuery->sideloadResponse({{"columns", this->preparedColumns}});
+  }
 }
 
 /*

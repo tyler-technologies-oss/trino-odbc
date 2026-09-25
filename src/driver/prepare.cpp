@@ -4,6 +4,7 @@
 
 #include "../util/randomStr.hpp"
 #include "../util/stringFromChar.hpp"
+#include "../util/stringTrim.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 
@@ -24,14 +25,17 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
 
   try {
     Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
-    // Clear out any previously bound parameters. Since this is a new prepared
-    // statement, we don't want bound parameters from a prior prepared statement
-    // to interfere.
-    statementPtr->impParamDesc->reset();
+    // Bound parameters are kept. ODBC lets an application bind them
+    // before or after SQLPrepare, and SQLExecute only passes as many
+    // as the query has markers, so older bindings don't interfere.
 
     // Write the PREPARE statement for this query.
-    std::string queryText = stringFromChar(StatementText, TextLength);
+    std::string queryText =
+        removeTrailingSemicolons(stringFromChar(StatementText, TextLength));
     WriteLog(LL_DEBUG, "  Raw Query: " + queryText);
+    statement->statementText = queryText;
+    statement->prepared      = false;
+    statement->executed      = false;
     std::string preparedName = getRandomText(12);
     std::string preparedQueryPrefix =
         std::format("PREPARE \"{}\" FROM", preparedName);
@@ -50,6 +54,27 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
     // as executed yet. Instead we need to poll until trino has succesfully
     // prepared the query.
     trinoQuery->poll(UntilQueryPrepared);
+    if (trinoQuery->hasError()) {
+      WriteLog(LL_ERROR, "  ERROR: Trino rejected the query to prepare");
+      return SQL_ERROR;
+    }
+
+    // Load the result columns now, so SQLNumResultCols and SQLDescribeCol
+    // work before SQLExecute. The row descriptor's metadata is cleared
+    // because the DESCRIBE OUTPUT query filled it with its own columns.
+    // The row descriptor also holds the application's column bindings,
+    // which must survive, so it isn't reset.
+    WriteLog(LL_DEBUG, "  Describing Prepared Query Output");
+    json columns = trinoQuery->describePreparedOutput();
+    if (trinoQuery->hasError()) {
+      WriteLog(LL_ERROR, "  ERROR: Trino could not describe the query");
+      return SQL_ERROR;
+    }
+    trinoQuery->reset();
+    statement->getRowDescriptor()->clearColumnMetadata();
+    trinoQuery->sideloadResponse({{"columns", columns}});
+    statement->preparedColumns = columns;
+    statement->prepared        = true;
 
     return SQL_SUCCESS;
 

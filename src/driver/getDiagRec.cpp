@@ -107,16 +107,16 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
         TrinoOdbcErrorHandler::OdbcError odbcErr =
             statement->trinoQuery->getError();
 
-        // Only set SqlStatePtr and NativeErrorPtr on the first chunk
-        if (trinoRecNumber == 1) {
-          // ODBC fixes the SQLSTATE buffer at five characters plus a
-          // null terminator, which is the only size it can be given.
-          writeNullTermStringToPtr<SQLINTEGER>(
-              SqlStatePtr, odbcErr.sqlstate, SQL_SQLSTATE_SIZE + 1, nullptr);
+        // A long Trino error is split across several records. Every
+        // record needs its own SQLSTATE, since applications print it
+        // for each one, and an unwritten buffer shows up as garbage.
+        // ODBC fixes the SQLSTATE buffer at five characters plus a
+        // null terminator, which is the only size it can be given.
+        writeNullTermStringToPtr<SQLINTEGER>(
+            SqlStatePtr, odbcErr.sqlstate, SQL_SQLSTATE_SIZE + 1, nullptr);
 
-          if (NativeErrorPtr) {
-            *NativeErrorPtr = odbcErr.native;
-          }
+        if (NativeErrorPtr) {
+          *NativeErrorPtr = odbcErr.native;
         }
 
         // Build all lines: summary (split by newlines) + stack (each with tab)
@@ -176,20 +176,15 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
           return SQL_NO_DATA;
         }
 
-        // Copy the chunk to the output buffer
-        size_t toCopy = std::min(chunk.size(), chunkSize);
-        if (MessageTextPtr && BufferLength > 0) {
-          strncpy_s(reinterpret_cast<char*>(MessageTextPtr),
-                    BufferLength,
-                    chunk.c_str(),
-                    toCopy);
-          reinterpret_cast<char*>(MessageTextPtr)[toCopy] = '\0';
-        }
-        if (TextLengthPtr) {
-          *TextLengthPtr = static_cast<SQLSMALLINT>(toCopy);
-        }
+        // Copy the chunk to the output buffer. Only a line too long for
+        // the whole buffer is truncated, and then the full length is
+        // reported so the application can ask again with more room.
+        // As in writeHandleError, the return code alone reports the
+        // truncation, since SQLGetDiagRec must not record a diagnostic.
+        bool truncated = writeNullTermStringToPtr(
+            MessageTextPtr, chunk, BufferLength, TextLengthPtr);
 
-        return SQL_SUCCESS;
+        return truncated ? SQL_SUCCESS_WITH_INFO : SQL_SUCCESS;
       } else {
         return SQL_NO_DATA;
       }

@@ -52,6 +52,19 @@ void Descriptor::reset() {
   this->fields.resize(0);
 }
 
+void Descriptor::clearColumnMetadata() {
+  // The application's SQLBindCol bindings are kept, since they last until
+  // SQLFreeStmt(SQL_UNBIND). Everything else goes back to its default.
+  for (DescriptorField& field : this->fields) {
+    DescriptorField clearedField;
+    clearedField.bufferCDataType      = field.bufferCDataType;
+    clearedField.bufferPtr            = field.bufferPtr;
+    clearedField.bufferLength         = field.bufferLength;
+    clearedField.bufferStrLenOrIndPtr = field.bufferStrLenOrIndPtr;
+    field                             = clearedField;
+  }
+}
+
 SQLSMALLINT Descriptor::getFieldCount() {
   return static_cast<SQLSMALLINT>(this->fields.size());
 }

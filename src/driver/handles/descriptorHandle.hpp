@@ -72,6 +72,8 @@ class Descriptor {
     const DescriptorField& getFieldRef(SQLSMALLINT columnIndex);
     void resize(SQLSMALLINT newSize);
     void reset();
+    // Forget the column metadata but keep any bound columns.
+    void clearColumnMetadata();
     SQLSMALLINT getFieldCount();
 
     // HEADER FIELDS

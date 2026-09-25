@@ -81,6 +81,18 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
   // A new call starts with no diagnostics from the previous one.
   statement->clearError();
 
+  // There's no result to fetch from until the statement is executed.
+  // A prepared statement, or one whose cursor was closed, holds the
+  // described columns as a completed query with no rows, which would
+  // otherwise look like an empty result.
+  if (not statement->executed) {
+    WriteLog(LL_ERROR, "  ERROR: SQLFetch called before the query executed");
+    ErrorInfo errorInfo("SQLFetch was called without an executed query",
+                        "HY010");
+    statement->setError(errorInfo);
+    return SQL_ERROR;
+  }
+
   WriteLog(LL_TRACE, "  Checking row counts and completion");
   bool trinoQueryCompleted   = trinoQuery->getIsCompleted();
   int64_t trinoQueryRowCount = trinoQuery->getCurrentRowCount();
@@ -125,6 +137,17 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
     statement->setFetchedPosition(fetchedPosition + 1);
     handleBoundColumns(statement);
     return SQL_SUCCESS;
+
+  } else if (not trinoQueryCompleted and not trinoQuery->hasMoreToPoll()) {
+    // There's no query to fetch from. This happens after SQLFreeStmt with
+    // SQL_CLOSE, or when SQLExecDirect or SQLExecute failed before posting
+    // a query. Polling would return nothing new, so fetching again would
+    // recurse forever.
+    WriteLog(LL_ERROR, "  ERROR: SQLFetch called with no query to fetch from");
+    ErrorInfo errorInfo("SQLFetch was called without an executed query",
+                        "HY010");
+    statement->setError(errorInfo);
+    return SQL_ERROR;
 
   } else if (not trinoQueryCompleted) {
     // Handle the case that the query is not yet completed, but there's

@@ -48,3 +48,38 @@ TEST_F(SQLCancelTest, TestCancelQuery) {
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
+
+// Cancelling sends Trino a DELETE on the connection's shared curl
+// handle. The next query on the connection must still go out as a
+// POST, or Trino rejects it with 405 Method Not Allowed.
+TEST_F(SQLCancelTest, TestQueryAfterCancelOnSameConnection) {
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = "SELECT custkey FROM tpch.sf1.customer";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFetch(hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLCancel(hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // A fresh statement on the same connection.
+  ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  std::string nextQuery = "SELECT 2";
+  ret = SQLExecDirect(hStmt, (SQLCHAR*)nextQuery.c_str(), SQL_NTS);
+  maybeReportStatementError(ret);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ret = SQLFetch(hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  SQLBIGINT result = 0;
+  ret = SQLGetData(hStmt, 1, SQL_C_SBIGINT, &result, sizeof(result), NULL);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(result, 2);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}

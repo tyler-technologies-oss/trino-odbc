@@ -2,10 +2,16 @@
 #include <sql.h>
 #include <string.h>
 
+#include <format>
+
 #include "../trinoAPIWrapper/trinoQuery.hpp"
+#include "../util/parameterMarkers.hpp"
 #include "../util/stringFromChar.hpp"
+#include "../util/stringReplace.hpp"
+#include "../util/stringTrim.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
+#include "mappings/parameterToText.hpp"
 
 SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
                                 _In_reads_opt_(TextLength)
@@ -19,13 +25,50 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
   }
 
   Statement* statementPtr = reinterpret_cast<Statement*>(StatementHandle);
-  // A new call starts with no diagnostics from the previous one.
+  // A new call starts with no diagnostics from the previous one. That
+  // includes the error from the last Trino query, which would otherwise
+  // be reported again if this call fails before posting a new one.
   statementPtr->clearError();
+  statementPtr->trinoQuery->reset();
+  statementPtr->executed = false;
 
   try {
-    Statement* statement  = (Statement*)StatementHandle;
-    std::string queryText = stringFromChar(StatementText, TextLength);
+    Statement* statement = (Statement*)StatementHandle;
+    std::string queryText =
+        removeTrailingSemicolons(stringFromChar(StatementText, TextLength));
     WriteLog(LL_DEBUG, "  Query: " + queryText);
+    // This replaces any prepared statement on the handle.
+    statement->statementText = queryText;
+    statement->prepared      = false;
+
+    // Applications such as Report Builder bind parameters and then
+    // call SQLExecDirect, without SQLPrepare. Trino only accepts
+    // parameter values through EXECUTE, so run the query with
+    // EXECUTE IMMEDIATE and pass the bound values after USING.
+    // A PREPARE statement is always sent as it is, since its markers
+    // are filled by a later EXECUTE and not by anything bound now.
+    // So is a query with markers but no bound parameters.
+    SQLSMALLINT markerCount =
+        static_cast<SQLSMALLINT>(countParametersToBind(queryText));
+    Descriptor* paramDescriptor = statement->getParamDescriptor();
+    SQLSMALLINT boundCount      = countBoundParameters(paramDescriptor);
+    if (markerCount > 0 and boundCount > 0) {
+      if (boundCount < markerCount) {
+        WriteLog(LL_ERROR, "  ERROR: Not every parameter marker is bound");
+        ErrorInfo errorInfo(
+            std::format("The query has {} parameter markers, but only the "
+                        "first {} are bound",
+                        markerCount,
+                        boundCount),
+            "07002");
+        statementPtr->setError(errorInfo);
+        return SQL_ERROR;
+      }
+      queryText = std::format("EXECUTE IMMEDIATE '{}'\nUSING {}",
+                              replaceAll(queryText, "'", "''"),
+                              parameterListText(paramDescriptor, markerCount));
+      WriteLog(LL_DEBUG, "  Query with parameters: " + queryText);
+    }
     TrinoQuery* trinoQuery = statement->trinoQuery;
     WriteLog(LL_DEBUG, "  Setting Query");
     trinoQuery->setQuery(queryText);

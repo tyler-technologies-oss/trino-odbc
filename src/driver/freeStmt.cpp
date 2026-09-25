@@ -13,7 +13,7 @@ SQLRETURN SQL_API SQLFreeStmt(SQLHSTMT StatementHandle, SQLUSMALLINT Option) {
       WriteLog(
           LL_TRACE,
           "  Closing statement with SQL_CLOSE. The statement may be reused.");
-      stmt->reset();
+      stmt->closeCursor();
       return SQL_SUCCESS;
     }
     case (SQL_DROP): {
@@ -27,10 +27,9 @@ SQLRETURN SQL_API SQLFreeStmt(SQLHSTMT StatementHandle, SQLUSMALLINT Option) {
       return SQL_ERROR;
     }
     case (SQL_RESET_PARAMS): {
-      WriteLog(
-          LL_ERROR,
-          "  ERROR: Unimplemented: Closing statement with SQL_RESET_PARAMS");
-      return SQL_ERROR;
+      WriteLog(LL_TRACE, "  Releasing all bound parameters");
+      stmt->getParamDescriptor()->reset();
+      return SQL_SUCCESS;
     }
     default: {
       WriteLog(LL_ERROR, "  ERROR: Unknown option in SQLFreeStmt");
