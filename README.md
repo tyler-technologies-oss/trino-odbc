@@ -84,7 +84,12 @@ External Authentication, or Device Flow.
 The driver implements prepared statements by mapping them onto Trino's
 own `PREPARE` and `EXECUTE` SQL statements. `SQLPrepare` submits a
 `PREPARE <generated name> FROM <your query>` statement to Trino and polls
-until Trino reports the statement as prepared. `SQLBindParameter` records
+until Trino reports the statement as prepared. It then runs
+`DESCRIBE OUTPUT <generated name>`, so `SQLNumResultCols`,
+`SQLDescribeCol`, and `SQLColAttribute` report the result columns before
+`SQLExecute` is called, as Power BI expects. If Trino rejects the query
+at either step, `SQLPrepare` returns `SQL_ERROR` and the reason is
+available from `SQLGetDiagRec`. `SQLBindParameter` records
 the bound application buffer in the statement's parameter descriptor.
 `SQLExecute` then builds an `EXECUTE "<generated name>" USING ...`
 statement, rendering each bound parameter as a SQL literal.
@@ -97,6 +102,9 @@ parameters is sent to Trino unchanged.
 
 What this means in practice:
 
+- Trailing semicolons are removed from the query before it is sent,
+  since Trino rejects them. This applies to both `SQLPrepare` and
+  `SQLExecDirect`, so queries such as `SELECT 1;` work.
 - Parameters are interpolated into SQL text as literals by the driver,
   not sent to Trino as separate parameter values. Strings are single-quoted
   with embedded single quotes doubled.
