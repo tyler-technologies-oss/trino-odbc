@@ -92,8 +92,11 @@ bool writeNullTermWideStringToPtr(SQLPOINTER InfoValuePtr,
     return false;
   }
 
-  // Only whole characters fit, and one of them is the terminator.
-  const SQLLEN characterCapacity = BufferLength / sizeof(char16_t);
+  // Only whole characters fit, and one of them is the terminator. The
+  // division has to be signed, or a negative BufferLength (an SQL_IS_*
+  // marker) becomes a huge capacity.
+  const SQLLEN characterCapacity =
+      BufferLength / static_cast<SQLLEN>(sizeof(char16_t));
   if (characterCapacity <= 0) {
     return length > 0;
   }
@@ -128,7 +131,10 @@ bool writeNullTermWideCharsToPtr(SQLPOINTER InfoValuePtr,
                                  T* StringLengthPtr) {
   SQLLEN lengthInBytes = 0;
   bool truncated       = writeNullTermWideStringToPtr(
-      InfoValuePtr, s, BufferLength * sizeof(char16_t), &lengthInBytes);
+      InfoValuePtr,
+      s,
+      BufferLength * static_cast<SQLLEN>(sizeof(char16_t)),
+      &lengthInBytes);
   if (StringLengthPtr) {
     *StringLengthPtr = static_cast<T>(lengthInBytes / sizeof(char16_t));
   }

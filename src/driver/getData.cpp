@@ -83,8 +83,10 @@ static SQLRETURN getTextData(Statement* statement,
 
   size_t copied = std::min(remaining, static_cast<size_t>(capacity - 1));
   if (cDataType == SQL_C_WCHAR) {
-    // Don't split a surrogate pair between two parts.
-    if (copied < remaining and copied > 0 and
+    // Don't split a surrogate pair between two parts, unless the buffer
+    // only has room for one code unit. Copying nothing then would return
+    // the same empty part forever. The parts still join into valid UTF-16.
+    if (copied < remaining and copied > 1 and
         wideText[offset + copied - 1] >= 0xD800 and
         wideText[offset + copied - 1] <= 0xDBFF) {
       copied--;

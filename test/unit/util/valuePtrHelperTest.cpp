@@ -299,6 +299,43 @@ TEST(ValuePtrHelperTest, WideNullPointerReportsLengthOnly) {
   EXPECT_EQ(len, 4 * sizeof(char16_t));
 }
 
+TEST(ValuePtrHelperTest, WideNegativeBufferLengthIsNotWrittenTo) {
+  /*
+  Setup
+
+  Integer attributes pass a negative SQL_IS_* marker as BufferLength.
+  It must not be read as a byte count, so nothing is written.
+  */
+  std::string s      = "caf\xC3\xA9";
+  char16_t buffer[2] = {u'x', u'x'};
+  short len          = 0;
+
+  // Test
+  bool truncated =
+      writeNullTermWideStringToPtr(buffer, s, SQL_IS_INTEGER, &len);
+
+  // Assert
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(buffer[0], u'x');
+  EXPECT_EQ(buffer[1], u'x');
+  EXPECT_EQ(len, 4 * sizeof(char16_t));
+}
+
+TEST(ValuePtrHelperTest, WideCharsNegativeBufferLengthIsNotWrittenTo) {
+  std::string s      = "caf\xC3\xA9";
+  char16_t buffer[2] = {u'x', u'x'};
+  short len          = 0;
+
+  // Test
+  bool truncated = writeNullTermWideCharsToPtr(buffer, s, SQL_IS_INTEGER, &len);
+
+  // Assert
+  EXPECT_TRUE(truncated);
+  EXPECT_EQ(buffer[0], u'x');
+  EXPECT_EQ(buffer[1], u'x');
+  EXPECT_EQ(len, 4);
+}
+
 TEST(ValuePtrHelperTest, WideCharsVersionCountsCharacters) {
   /*
   Setup

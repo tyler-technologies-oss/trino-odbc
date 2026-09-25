@@ -365,6 +365,27 @@ TEST_F(UnicodeTest, GetDataPartsDontSplitSurrogatePairs) {
   EXPECT_EQ(std::u16string(part), (std::u16string{0xD83D, 0xDE00}));
 }
 
+TEST_F(UnicodeTest, GetDataOneUnitPartsSplitSurrogatePairs) {
+  // A buffer with room for one code unit can't hold the whole emoji.
+  // Each part is then one code unit, so reading still moves forward
+  // and the parts join into "x😀".
+  execDirectW(u"SELECT 'x' || chr(128512)");
+
+  char16_t part[2] = {};
+  SQLLEN indicator = 0;
+  std::u16string whole;
+  SQLRETURN ret = SQL_SUCCESS_WITH_INFO;
+  int calls     = 0;
+  while (ret == SQL_SUCCESS_WITH_INFO and calls < 10) {
+    ret = SQLGetData(hStmt, 1, SQL_C_WCHAR, part, sizeof(part), &indicator);
+    whole += part;
+    calls++;
+  }
+  EXPECT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(whole, (std::u16string{u'x', 0xD83D, 0xDE00}));
+  EXPECT_EQ(calls, 3);
+}
+
 TEST_F(UnicodeTest, GetDataLengthQueryDoesNotConsumeTheValue) {
   execDirectW(u"SELECT 'caf' || chr(233)");
 
