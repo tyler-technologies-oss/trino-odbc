@@ -101,6 +101,75 @@ static std::string numericToText(const SQL_NUMERIC_STRUCT* numeric) {
   return digits;
 }
 
+/*
+Write text from a character buffer as a literal of the SQL type the
+application gave SQLBindParameter. Trino won't compare a varchar with a
+number or a date, so text bound as SQL_BIGINT has to be sent as
+BIGINT '42' and not '42'. The text is quoted either way, with its
+single quotes doubled, so it can't break out of the literal.
+*/
+static std::string characterParameterText(const std::string& text,
+                                          SQLSMALLINT sqlType) {
+  std::string escaped = replaceAll(text, "'", "''");
+  switch (sqlType) {
+    case SQL_BIT: { // -7
+      return std::format("BOOLEAN '{}'", escaped);
+    }
+    case SQL_TINYINT: { // -6
+      return std::format("TINYINT '{}'", escaped);
+    }
+    case SQL_SMALLINT: { // 5
+      return std::format("SMALLINT '{}'", escaped);
+    }
+    case SQL_INTEGER: { // 4
+      return std::format("INTEGER '{}'", escaped);
+    }
+    case SQL_BIGINT: { // -5
+      return std::format("BIGINT '{}'", escaped);
+    }
+    case SQL_REAL: { // 7
+      return std::format("REAL '{}'", escaped);
+    }
+    // SQL_FLOAT is double precision in ODBC.
+    case SQL_FLOAT:    // 6
+    case SQL_DOUBLE: { // 8
+      return std::format("DOUBLE '{}'", escaped);
+    }
+    // Trino takes the precision and scale of a decimal literal from its
+    // digits, so the column size and decimal digits aren't needed.
+    case SQL_DECIMAL:   // 3
+    case SQL_NUMERIC: { // 2
+      return std::format("DECIMAL '{}'", escaped);
+    }
+    case SQL_DATE:        // 9
+    case SQL_TYPE_DATE: { // 91
+      return std::format("DATE '{}'", escaped);
+    }
+    case SQL_TIME:        // 10
+    case SQL_TYPE_TIME: { // 92
+      return std::format("TIME '{}'", escaped);
+    }
+    case SQL_TIMESTAMP:        // 11
+    case SQL_TYPE_TIMESTAMP: { // 93
+      return std::format("TIMESTAMP '{}'", escaped);
+    }
+    case SQL_GUID: { // -11
+      return std::format("UUID '{}'", escaped);
+    }
+    // Text bound to a binary type holds the bytes as hexadecimal digits.
+    case SQL_BINARY:          // -2
+    case SQL_VARBINARY:       // -3
+    case SQL_LONGVARBINARY: { // -4
+      return std::format("X'{}'", escaped);
+    }
+    // Character types stay varchar, and so does a parameter whose
+    // type was never set.
+    default: {
+      return std::format("'{}'", escaped);
+    }
+  }
+}
+
 std::string descriptorFieldToParameterText(const DescriptorField& field) {
   SQLLEN indicator = getIndicator(field);
   if (indicator == SQL_NULL_DATA) {
@@ -117,15 +186,11 @@ std::string descriptorFieldToParameterText(const DescriptorField& field) {
   }
 
   switch (field.bufferCDataType) {
-    // Assume SQL_C_CHAR is a varchar, and surround it with single quotes
-    // to match the SQL standard. To avoid SQL injection, we need to escape
-    // any single quotes in the string by replacing them with two single quotes.
     case SQL_C_CHAR: { // 1
-      const char* text          = static_cast<char*>(field.bufferPtr);
-      std::string value         = (indicator == SQL_NTS) ? std::string(text)
-                                                         : std::string(text, indicator);
-      const std::string escaped = replaceAll(value, "'", "''");
-      return std::format("'{}'", escaped);
+      const char* text  = static_cast<char*>(field.bufferPtr);
+      std::string value = (indicator == SQL_NTS) ? std::string(text)
+                                                 : std::string(text, indicator);
+      return characterParameterText(value, field.odbcDataType);
     }
     // .NET applications, such as Report Builder, bind every string
     // as UTF-16. The indicator holds its length in bytes.
@@ -139,9 +204,8 @@ std::string descriptorFieldToParameterText(const DescriptorField& field) {
       } else {
         length = static_cast<size_t>(indicator) / sizeof(uint16_t);
       }
-      const std::string escaped =
-          replaceAll(utf16ToUtf8(text, length), "'", "''");
-      return std::format("'{}'", escaped);
+      return characterParameterText(utf16ToUtf8(text, length),
+                                    field.odbcDataType);
     }
     // Assume all other types are numeric literals and do not require quotes.
     case SQL_C_FLOAT: { // 7

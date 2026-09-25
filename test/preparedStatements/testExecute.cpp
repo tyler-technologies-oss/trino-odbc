@@ -148,6 +148,60 @@ TEST(DescriptorFieldToParameterTextTest, CharUsesIndicatorLength) {
 }
 
 // ---------------------------------------------------------------------------
+// SQL_C_CHAR / SQL_C_WCHAR – text is sent as the declared SQL type
+// ---------------------------------------------------------------------------
+TEST(DescriptorFieldToParameterTextTest, CharBoundAsBigint) {
+  char value[]      = "42";
+  DescriptorField f = makeField(SQL_C_CHAR, value);
+  f.odbcDataType    = SQL_BIGINT;
+  EXPECT_EQ(descriptorFieldToParameterText(f), "BIGINT '42'");
+}
+
+TEST(DescriptorFieldToParameterTextTest, CharBoundAsDecimal) {
+  char value[]      = "1.50";
+  DescriptorField f = makeField(SQL_C_CHAR, value);
+  f.odbcDataType    = SQL_DECIMAL;
+  EXPECT_EQ(descriptorFieldToParameterText(f), "DECIMAL '1.50'");
+}
+
+TEST(DescriptorFieldToParameterTextTest, CharBoundAsDate) {
+  char value[]      = "2001-08-22";
+  DescriptorField f = makeField(SQL_C_CHAR, value);
+  f.odbcDataType    = SQL_TYPE_DATE;
+  EXPECT_EQ(descriptorFieldToParameterText(f), "DATE '2001-08-22'");
+}
+
+TEST(DescriptorFieldToParameterTextTest, CharBoundAsBinary) {
+  char value[]      = "0AFF";
+  DescriptorField f = makeField(SQL_C_CHAR, value);
+  f.odbcDataType    = SQL_VARBINARY;
+  EXPECT_EQ(descriptorFieldToParameterText(f), "X'0AFF'");
+}
+
+TEST(DescriptorFieldToParameterTextTest, CharBoundAsVarchar) {
+  char value[]      = "42";
+  DescriptorField f = makeField(SQL_C_CHAR, value);
+  f.odbcDataType    = SQL_VARCHAR;
+  EXPECT_EQ(descriptorFieldToParameterText(f), "'42'");
+}
+
+TEST(DescriptorFieldToParameterTextTest, CharBoundAsIntegerEscapesQuotes) {
+  char value[]      = "1' OR '1'='1";
+  DescriptorField f = makeField(SQL_C_CHAR, value);
+  f.odbcDataType    = SQL_INTEGER;
+  EXPECT_EQ(descriptorFieldToParameterText(f), "INTEGER '1'' OR ''1''=''1'");
+}
+
+TEST(DescriptorFieldToParameterTextTest, WideCharBoundAsTimestamp) {
+  SQLWCHAR value[]  = {'2', '0', '0', '1', '-', '0', '8', '-', '2', '2',
+                       ' ', '0', '1', ':', '0', '2', ':', '0', '3', 0};
+  DescriptorField f = makeField(SQL_C_WCHAR, value);
+  f.odbcDataType    = SQL_TYPE_TIMESTAMP;
+  EXPECT_EQ(descriptorFieldToParameterText(f),
+            "TIMESTAMP '2001-08-22 01:02:03'");
+}
+
+// ---------------------------------------------------------------------------
 // SQL_NULL_DATA – a NULL value, whatever the C type
 // ---------------------------------------------------------------------------
 TEST(DescriptorFieldToParameterTextTest, NullIndicator) {
