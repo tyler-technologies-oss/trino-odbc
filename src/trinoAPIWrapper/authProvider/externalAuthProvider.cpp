@@ -117,8 +117,14 @@ std::string refreshExternalAuth(ExternalAuthParams& params) {
   std::string redirectServer = authServerInfo.at("x_redirect_server");
   WriteLog(LL_INFO, "  Authenticating to: " + redirectServer);
 
-  // This kicks off the auth process in a browser window.
-  openURLInDefaultBrowser(redirectServer);
+  // This kicks off the auth process in a browser window. Without one,
+  // nobody can log in, so there's no point waiting for a token.
+  if (not openURLInDefaultBrowser(redirectServer)) {
+    WriteLog(LL_ERROR,
+             "  ERROR: External auth needs a browser. Connect from a "
+             "desktop session to refresh the cached token.");
+    return "";
+  }
 
   // Once that's done, we need to hit the a token server to obtain
   // an auth token. This is another endpoint on the trino coordinator

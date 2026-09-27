@@ -1,5 +1,7 @@
 #include "tokenCacheAuthProviderBase.hpp"
 
+#include "../../util/writeLog.hpp"
+
 TokenCacheAuthProviderBase::TokenCacheAuthProviderBase(
     std::string hostname, unsigned short port, std::string connectionName)
     : AuthConfig(hostname, port, connectionName) {
@@ -32,6 +34,12 @@ void TokenCacheAuthProviderBase::refresh(
   // so subclasses must implement it.
   std::string accessToken =
       this->obtainAccessToken(curl, responseData, responseHeaderData);
+  if (accessToken.empty()) {
+    // Authentication failed. Caching an empty token would only
+    // overwrite the cached one, which may still be useful elsewhere.
+    WriteLog(LL_ERROR, "  ERROR: No access token was obtained");
+    return;
+  }
 
   // Cache the token
   this->cacheToken(accessToken);
