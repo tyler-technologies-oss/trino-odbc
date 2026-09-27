@@ -28,7 +28,120 @@ SQLRETURN SQL_API SQLGetStmtAttr(SQLHSTMT StatementHandle,
   // A new call starts with no diagnostics from the previous one.
   statement->clearError();
 
+  // Most attributes hold a single fixed value, since this driver
+  // supports only one choice for them. See SQLSetStmtAttr.
+  bool isFixedValue  = true;
+  SQLULEN fixedValue = 0;
   switch (Attribute) {
+    case SQL_ATTR_QUERY_TIMEOUT: // 0
+    case SQL_ATTR_MAX_ROWS:      // 1
+    case SQL_ATTR_MAX_LENGTH:    // 3
+    case SQL_ATTR_KEYSET_SIZE: { // 8
+      fixedValue = 0;
+      break;
+    }
+    case SQL_ATTR_NOSCAN: { // 2
+      fixedValue = SQL_NOSCAN_OFF;
+      break;
+    }
+    case SQL_ATTR_ASYNC_ENABLE: { // 4
+      fixedValue = SQL_ASYNC_ENABLE_OFF;
+      break;
+    }
+    case SQL_ATTR_ROW_BIND_TYPE: { // 5
+      fixedValue = statement->getRowDescriptor()->Field_BindType;
+      break;
+    }
+    case SQL_ATTR_CURSOR_TYPE: { // 6
+      fixedValue = SQL_CURSOR_FORWARD_ONLY;
+      break;
+    }
+    case SQL_ATTR_CONCURRENCY: { // 7
+      fixedValue = SQL_CONCUR_READ_ONLY;
+      break;
+    }
+    case SQL_ROWSET_SIZE:          // 9
+    case SQL_ATTR_ROW_ARRAY_SIZE:  // 27
+    case SQL_ATTR_PARAMSET_SIZE: { // 22
+      fixedValue = 1;
+      break;
+    }
+    case SQL_ATTR_RETRIEVE_DATA: { // 11
+      fixedValue = SQL_RD_ON;
+      break;
+    }
+    case SQL_ATTR_USE_BOOKMARKS: { // 12
+      fixedValue = SQL_UB_OFF;
+      break;
+    }
+    case SQL_ATTR_ENABLE_AUTO_IPD: // 15
+    case SQL_ATTR_METADATA_ID: {   // 10014
+      fixedValue = SQL_FALSE;
+      break;
+    }
+    case SQL_ATTR_PARAM_BIND_TYPE: { // 18
+      fixedValue = SQL_PARAM_BIND_BY_COLUMN;
+      break;
+    }
+    case SQL_ATTR_CURSOR_SCROLLABLE: { // -1
+      fixedValue = SQL_NONSCROLLABLE;
+      break;
+    }
+    case SQL_ATTR_CURSOR_SENSITIVITY: { // -2
+      fixedValue = SQL_INSENSITIVE;
+      break;
+    }
+    default: {
+      isFixedValue = false;
+      break;
+    }
+  }
+  if (isFixedValue) {
+    // These are integers, so BufferLength doesn't apply. ODBC defines
+    // them all as SQLULEN, apart from a few SQLUINTEGERs, and writing
+    // the smaller type would leave half of a SQLULEN untouched.
+    if (Value) {
+      *reinterpret_cast<SQLULEN*>(Value) = fixedValue;
+    }
+    if (StringLength) {
+      *StringLength = sizeof(SQLULEN);
+    }
+    WriteLog(LL_TRACE,
+             "  Finished getting attribute: " + std::to_string(Attribute));
+    return SQL_SUCCESS;
+  }
+
+  switch (Attribute) {
+    case SQL_ATTR_ROW_BIND_OFFSET_PTR: { // 23
+      if (Value) {
+        *reinterpret_cast<SQLLEN**>(Value) =
+            statement->getRowDescriptor()->Field_BindOffsetPtr;
+      }
+      if (StringLength) {
+        *StringLength = sizeof(SQLLEN*);
+      }
+      break;
+    }
+    case SQL_ATTR_ROW_STATUS_PTR: { // 25
+      if (Value) {
+        *reinterpret_cast<SQLUSMALLINT**>(Value) =
+            statement->impRowDesc->Field_ArrayStatusPtr;
+      }
+      if (StringLength) {
+        *StringLength = sizeof(SQLUSMALLINT*);
+      }
+      break;
+    }
+    case SQL_ATTR_ROWS_FETCHED_PTR: { // 26
+      if (Value) {
+        *reinterpret_cast<SQLULEN**>(Value) =
+            statement->impRowDesc->Field_RowsProcessedPtr;
+      }
+      if (StringLength) {
+        *StringLength = sizeof(SQLULEN*);
+      }
+      break;
+    }
     case SQL_ATTR_ROW_NUMBER: { // 14
       if (Value) {
         *reinterpret_cast<SQLULEN*>(Value) = statement->getFetchedPosition();

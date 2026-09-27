@@ -159,9 +159,8 @@ SQLLEN Statement::getFetchedPosition() {
 }
 
 void Statement::setFetchedPosition(SQLLEN pos) {
-  if (this->impRowDesc->Field_RowsProcessedPtr) {
-    *(this->impRowDesc->Field_RowsProcessedPtr) = pos;
-  }
+  // This is the row's position in the result, not the number of rows
+  // fetched. SQLFetch writes that to SQL_ATTR_ROWS_FETCHED_PTR.
   this->fetchedPosition = pos;
 }
 

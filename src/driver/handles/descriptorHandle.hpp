@@ -71,6 +71,8 @@ class Descriptor {
     DescriptorField getField(SQLSMALLINT columnIndex);
     const DescriptorField& getFieldRef(SQLSMALLINT columnIndex);
     void resize(SQLSMALLINT newSize);
+    // Forget every SQLBindCol binding, as SQLFreeStmt(SQL_UNBIND) does.
+    void unbindColumns();
     void reset();
     // Forget the column metadata but keep any bound columns.
     void clearColumnMetadata();

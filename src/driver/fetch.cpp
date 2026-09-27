@@ -43,6 +43,16 @@ static void handleBoundColumns(Statement* statement) {
 
     SQLLEN* strLen_or_IndPtr = field.bufferStrLenOrIndPtr;
     void* buffer             = field.bufferPtr;
+    // SQL_ATTR_ROW_BIND_OFFSET_PTR moves every bound buffer by the
+    // same number of bytes. MSDASQL uses it to fill a new row in place.
+    if (rowDescriptor->Field_BindOffsetPtr) {
+      SQLLEN offset = *rowDescriptor->Field_BindOffsetPtr;
+      buffer        = reinterpret_cast<char*>(buffer) + offset;
+      if (strLen_or_IndPtr) {
+        strLen_or_IndPtr = reinterpret_cast<SQLLEN*>(
+            reinterpret_cast<char*>(strLen_or_IndPtr) + offset);
+      }
+    }
     SQLLEN bufferLength      = field.bufferLength;
     SQLSMALLINT cDataType    = field.bufferCDataType;
     SQLSMALLINT odbcDataType = field.odbcDataType;
@@ -65,6 +75,23 @@ static void handleBoundColumns(Statement* statement) {
                    strLen_or_IndPtr,
                    field.precision,
                    field.scale);
+  }
+}
+
+/*
+Write the number of rows fetched and the status of the row, if the
+application set SQL_ATTR_ROWS_FETCHED_PTR or SQL_ATTR_ROW_STATUS_PTR.
+With one row per fetch, the count is 1 or 0 and there's one status.
+*/
+static void reportFetchedRows(Statement* statement,
+                              SQLULEN rowsFetched,
+                              SQLUSMALLINT rowStatus) {
+  Descriptor* ird = statement->impRowDesc;
+  if (ird->Field_RowsProcessedPtr) {
+    *ird->Field_RowsProcessedPtr = rowsFetched;
+  }
+  if (ird->Field_ArrayStatusPtr) {
+    ird->Field_ArrayStatusPtr[0] = rowStatus;
   }
 }
 
@@ -130,12 +157,14 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
       return SQL_ERROR;
     }
     WriteLog(LL_TRACE, "  SQLFetch is indicating that no data remains");
+    reportFetchedRows(statement, 0, SQL_ROW_NOROW);
     return SQL_NO_DATA;
   } else if (fetchedPosition < (trinoQueryRowCount - 1)) {
     // Handle the case that data is waiting to be read.
     WriteLog(LL_TRACE, "  There are more rows to read. Advancing row pointer.");
     statement->setFetchedPosition(fetchedPosition + 1);
     handleBoundColumns(statement);
+    reportFetchedRows(statement, 1, SQL_ROW_SUCCESS);
     return SQL_SUCCESS;
 
   } else if (not trinoQueryCompleted and not trinoQuery->hasMoreToPoll()) {
