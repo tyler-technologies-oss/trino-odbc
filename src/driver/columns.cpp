@@ -9,7 +9,8 @@
 std::string constructColumnQuery(std::string catalog,
                                  std::string schema,
                                  std::string tableName,
-                                 std::string columnName) {
+                                 std::string columnName,
+                                 bool unboundedVarcharAsLong) {
   /*
   We need to implement a result set that matches this exact spec.
   https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlcolumns-function
@@ -26,7 +27,21 @@ std::string constructColumnQuery(std::string catalog,
       * Problem: system.jdbc.columns reports integral types with NULL decimal
         digits
       * Solution: explicitly set integral types to have 0 decimal digits
+  * With the unboundedVarchar setting, a varchar with no length is long text.
+      * system.jdbc.columns reports it as data_type 12 with a column_size of
+        2147483647, which a varchar(n) can't have.
+      * We substitute data_type -1 - SQL_LONGVARCHAR, so SQLColumns agrees
+        with SQLDescribeCol. sql_data_type is NULL in system.jdbc.columns,
+        and becomes -1 too.
   */
+  std::string longVarcharCase = "";
+  std::string sqlDataType     = "sql_data_type";
+  if (unboundedVarcharAsLong) {
+    longVarcharCase =
+        "WHEN data_type = 12 AND column_size = 2147483647 THEN -1";
+    sqlDataType =
+        "CASE " + longVarcharCase + " ELSE sql_data_type END AS sql_data_type";
+  }
   // clang-format off
   std::string query = std::string(R"SQL(
     SELECT
@@ -34,8 +49,9 @@ std::string constructColumnQuery(std::string catalog,
         table_schem,
         table_name,
         column_name,
-        CASE data_type
-            WHEN 2014 THEN 93
+        CASE
+            WHEN data_type = 2014 THEN 93
+            )SQL") + longVarcharCase + std::string(R"SQL(
             ELSE data_type
         END AS data_type,
         CASE data_type
@@ -55,7 +71,7 @@ std::string constructColumnQuery(std::string catalog,
         nullable,
         remarks,
         column_def,
-        sql_data_type,
+        )SQL") + sqlDataType + std::string(R"SQL(,
         sql_datetime_sub,
         char_octet_length,
         ordinal_position,
@@ -135,8 +151,11 @@ SQLColumns(SQLHSTMT StatementHandle,
   WriteLog(LL_TRACE, "  Requested table: " + tableName);
   WriteLog(LL_TRACE, "  Requested columnName: " + columnName);
 
-  std::string query =
-      constructColumnQuery(catalogName, schemaName, tableName, columnName);
+  std::string query = constructColumnQuery(catalogName,
+                                           schemaName,
+                                           tableName,
+                                           columnName,
+                                           statement->unboundedVarcharAsLong);
   statement->trinoQuery->setQuery(query);
   statement->trinoQuery->post();
   statement->executed = true;

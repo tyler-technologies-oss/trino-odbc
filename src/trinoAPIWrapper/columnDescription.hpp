@@ -6,6 +6,9 @@
 
 using json = nlohmann::json;
 
+// Trino reports an unbounded varchar as having this length.
+extern const int64_t UNBOUNDED_VARCHAR_LENGTH;
+
 class ColumnDescription {
   private:
     std::string name;

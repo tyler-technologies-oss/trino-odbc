@@ -66,7 +66,8 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
 - Does not support SQL Transactions. SQLEndTran is implemented as a no-op that
   reports success; the Trino transaction headers are not handled.
 - Does not support binding and fetching multiple rows in a single call (SQLFetch with array size greater than 1)
-- Does not support non-sequential data fetching (SQLFetchScroll/SQLExtendedFetch)
+- Cursors are forward-only. SQLFetchScroll and SQLExtendedFetch only fetch the
+  next row (SQL_FETCH_NEXT).
 - Does not support iteratively discovering and enumerating connection attributes (SQLBrowseConnect)
 - All columns are reported as being nullable, regardless of whether they are
   actually nullable or not.
@@ -126,6 +127,39 @@ What this means in practice:
   data-at-execution parameters do not work.
 - `SQLDescribeParam` is not implemented.
 
+
+### SQL Server Linked Servers
+
+SQL Server can query Trino through this driver with a linked server, or with
+`OPENROWSET` and `OPENQUERY`, using the `MSDASQL` provider (Microsoft OLE DB
+Provider for ODBC Drivers).
+
+- **Long text.** SQL Server can't read a `SQL_VARCHAR` longer than 8000 bytes,
+  and Trino gives a `varchar` with no length a length of 2147483647. Set
+  **Unbounded Varchar** to **Long Varchar** in the DSN setup dialog, or add
+  `UnboundedVarchar=LongVarchar` to the connection string, and those columns
+  are reported as `SQL_LONGVARCHAR`. SQL Server then reads them as
+  `varchar(max)`. The default, **Varchar**, reports them as `SQL_VARCHAR`,
+  which is what Excel and Power BI have always seen. A `varchar(n)` is always
+  reported with its length `n`, so `CAST(col AS varchar(n))` in the query also
+  works.
+
+  ```sql
+  SELECT * FROM OPENROWSET('MSDASQL',
+      'DSN=Trino;UnboundedVarchar=LongVarchar;',
+      'SELECT name FROM iceberg.my_schema.my_table');
+  ```
+
+- **Authentication.** SQL Server loads the driver inside its own service,
+  where External Authentication can't open a browser. With a Windows login,
+  SQL Server runs the driver as that Windows user and reads the token that
+  user's own connections cached. Connect to the DSN from that user's desktop,
+  for example from Excel, and the linked server can use the token until it
+  expires. A query made after that fails with HTTP status 401 until the token
+  is refreshed the same way. OIDC Client Credentials needs no browser.
+- **Updating the driver.** When `MSDASQL` has *Allow inprocess* set, SQL Server
+  keeps the driver loaded. Restart the SQL Server service after installing a
+  new version.
 
 ### Identifying Specific Limitations
 

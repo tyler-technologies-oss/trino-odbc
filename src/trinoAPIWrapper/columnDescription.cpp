@@ -6,7 +6,7 @@
 #include "../util/stringSplitAndTrim.hpp"
 
 // Trino reports an unbounded varchar as having this length.
-const int64_t UNBOUNDED_VARCHAR_LENGTH = 2147483647;
+extern const int64_t UNBOUNDED_VARCHAR_LENGTH = 2147483647;
 
 ColumnDescription::ColumnDescription(const json& columnInfo) {
   this->name          = columnInfo["name"];

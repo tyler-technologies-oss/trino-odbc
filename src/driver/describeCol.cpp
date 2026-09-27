@@ -71,12 +71,24 @@ SQLRETURN SQL_API SQLDescribeCol(SQLHSTMT StatementHandle,
     *NameLength =
         static_cast<SQLSMALLINT>(thisColumnDescription.getName().size());
   }
+  // A varchar with no length is described as long text when the
+  // unboundedVarchar setting asks for it. The row descriptor holds that
+  // choice, along with the length to report.
+  bool isLongVarchar = descriptorField.odbcDataType == SQL_LONGVARCHAR;
   if (DataType) {
-    *DataType = inferODBCTypeCode(thisColumnDescription);
+    if (isLongVarchar) {
+      *DataType = SQL_LONGVARCHAR;
+    } else {
+      *DataType = inferODBCTypeCode(thisColumnDescription);
+    }
   }
   if (ColumnSize) {
     // Unit is bytes for binary precision data.
-    *ColumnSize = inferODBCColumnSize(thisColumnDescription);
+    if (isLongVarchar) {
+      *ColumnSize = static_cast<SQLULEN>(descriptorField.length);
+    } else {
+      *ColumnSize = inferODBCColumnSize(thisColumnDescription);
+    }
   }
   if (Nullable) {
     // I don't know that trino provides a way to determine this based on

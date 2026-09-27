@@ -1,10 +1,22 @@
 #include "driverConfig.hpp"
+
+#include <cctype>
+
 #include "../../util/capitalize.hpp"
 #include "../../util/writeLog.hpp"
 
 
 std::vector<std::string> LOG_LEVEL_NAMES = {
     "None", "Error", "Warn", "Info", "Debug", "Trace"};
+
+/*
+How to describe a Trino varchar with no length, which Trino gives as
+2147483647 characters. "Varchar" reports it as SQL_VARCHAR, as the
+driver always has. "Long Varchar" reports it as SQL_LONGVARCHAR, which
+applications read in parts. SQL Server linked servers need that, since
+they can't read a SQL_VARCHAR longer than 8000 bytes.
+*/
+std::vector<std::string> UNBOUNDED_VARCHAR_NAMES = {"Varchar", "Long Varchar"};
 
 std::vector<LogLevel> LOG_LEVEL_VALUES = {
     LL_NONE, LL_ERROR, LL_WARN, LL_INFO, LL_DEBUG, LL_TRACE};
@@ -57,6 +69,7 @@ std::map<std::string, std::string> DRIVER_CONFIG_DEFAULT_VALUES = {
     std::make_pair("clientSecret", ""),
     std::make_pair("oidcScope", ""),
     std::make_pair("secretEncryptionLevel", "user"),
+    std::make_pair("unboundedVarchar", "Varchar"),
 };
 
 // DSN
@@ -110,6 +123,35 @@ void DriverConfig::setLogLevel(LogLevel level) {
 void DriverConfig::setLogLevel(std::string level) {
   std::string casedLevel = capitalizedCase(level);
   this->logLevel         = LOG_NAME_TO_LOG_LEVEL.at(casedLevel);
+}
+
+// Unbounded varchar
+std::string DriverConfig::getUnboundedVarcharStr() {
+  return this->unboundedVarcharAsLong ? "Long Varchar" : "Varchar";
+}
+bool DriverConfig::getUnboundedVarcharAsLong() {
+  return this->unboundedVarcharAsLong;
+}
+void DriverConfig::setUnboundedVarchar(std::string unboundedVarchar) {
+  // Case and spaces don't matter, so a connection string can say
+  // UnboundedVarchar=LongVarchar.
+  std::string simplified;
+  for (char c : unboundedVarchar) {
+    if (c != ' ') {
+      simplified +=
+          static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+  }
+  if (simplified == "longvarchar") {
+    this->unboundedVarcharAsLong = true;
+  } else {
+    if (simplified != "varchar" and not simplified.empty()) {
+      WriteLog(LL_WARN,
+               "  Unknown unboundedVarchar value, using Varchar: " +
+                   unboundedVarchar);
+    }
+    this->unboundedVarcharAsLong = false;
+  }
 }
 
 // Auth Method
@@ -239,6 +281,12 @@ DriverConfig driverConfigFromKVPs(std::map<std::string, std::string> kvps) {
   if (kvps.count("tokenendpoint")) {
     config.setTokenEndpoint(kvps.at("tokenendpoint"));
   }
+  if (kvps.count("unboundedVarchar")) {
+    config.setUnboundedVarchar(kvps.at("unboundedVarchar"));
+  }
+  if (kvps.count("unboundedvarchar")) {
+    config.setUnboundedVarchar(kvps.at("unboundedvarchar"));
+  }
 
   return config;
 }
@@ -277,6 +325,7 @@ std::map<std::string, std::string> driverConfigToKVPs(DriverConfig config) {
   if (!config.getOidcScope().empty()) {
     kvps["oidcScope"] = config.getOidcScope();
   }
+  kvps["unboundedVarchar"] = config.getUnboundedVarcharStr();
 
   return kvps;
 }

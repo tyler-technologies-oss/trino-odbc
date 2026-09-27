@@ -45,6 +45,9 @@ class Statement {
     json preparedColumns;
     // The method used in SQLFetch for polling trino.
     TrinoQueryPollMode fetchPollMode = UntilNewData;
+    // Describe varchars with no length as SQL_LONGVARCHAR, from the
+    // DSN's unboundedVarchar setting.
+    bool unboundedVarcharAsLong = false;
 
     // The ODBC protocol assumes these descriptors are
     // instantiated on all statements.

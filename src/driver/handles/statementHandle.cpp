@@ -70,6 +70,12 @@ void Statement::columnsChangedCallback(TrinoQuery* trinoQuery) {
     if (varcharLength > 0) {
       field.length      = static_cast<SQLINTEGER>(varcharLength);
       field.octetLength = static_cast<SQLLEN>(varcharLength);
+    } else if (trinoRawType == "varchar" and this->unboundedVarcharAsLong) {
+      // A varchar with no length becomes long text, as large as Trino
+      // says it can be. See the unboundedVarchar setting.
+      field.odbcDataType = SQL_LONGVARCHAR;
+      field.length       = static_cast<SQLINTEGER>(UNBOUNDED_VARCHAR_LENGTH);
+      field.octetLength  = static_cast<SQLLEN>(UNBOUNDED_VARCHAR_LENGTH);
     }
     this->getRowDescriptor()->setField(i, field);
     i++;

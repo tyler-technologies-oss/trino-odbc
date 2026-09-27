@@ -135,8 +135,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
   switch (FieldIdentifier) {
     case SQL_DESC_CONCISE_TYPE: { // 2
       WriteLog(LL_TRACE, "  Getting SQL column type");
-      SQLSMALLINT odbcTypeCode =
-          TRINO_RAW_TYPE_TO_ODBC_TYPE_CODE[columnInfo.trinoRawTypeName];
+      SQLSMALLINT odbcTypeCode = columnInfo.odbcDataType;
       if (NumericAttributePtr) {
         *reinterpret_cast<SQLLEN*>(NumericAttributePtr) = odbcTypeCode;
       }
@@ -166,8 +165,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       break;
     }
     case SQL_DESC_DISPLAY_SIZE: { // 6
-      SQLSMALLINT odbcTypeCode =
-          TRINO_RAW_TYPE_TO_ODBC_TYPE_CODE[columnInfo.trinoRawTypeName];
+      SQLSMALLINT odbcTypeCode = columnInfo.odbcDataType;
       if (NumericAttributePtr) {
         *reinterpret_cast<SQLLEN*>(NumericAttributePtr) =
             getDisplaySize(odbcTypeCode, columnInfo);
@@ -206,8 +204,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     }
     case SQL_DESC_CASE_SENSITIVE: { // 12
       // Trino compares strings case-sensitively.
-      SQLSMALLINT odbcTypeCode =
-          TRINO_RAW_TYPE_TO_ODBC_TYPE_CODE[columnInfo.trinoRawTypeName];
+      SQLSMALLINT odbcTypeCode = columnInfo.odbcDataType;
       if (NumericAttributePtr) {
         *reinterpret_cast<SQLLEN*>(NumericAttributePtr) =
             isCharacterType(odbcTypeCode) ? SQL_TRUE : SQL_FALSE;
@@ -217,8 +214,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_SEARCHABLE: { // 13
       // Every column can be used in a WHERE clause, and strings can
       // be used with LIKE as well.
-      SQLSMALLINT odbcTypeCode =
-          TRINO_RAW_TYPE_TO_ODBC_TYPE_CODE[columnInfo.trinoRawTypeName];
+      SQLSMALLINT odbcTypeCode = columnInfo.odbcDataType;
       if (NumericAttributePtr) {
         *reinterpret_cast<SQLLEN*>(NumericAttributePtr) =
             isCharacterType(odbcTypeCode) ? SQL_PRED_SEARCHABLE
@@ -257,10 +253,9 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_LITERAL_SUFFIX: { // 28
       // String literals are quoted. Other literals need nothing
       // ODBC can express as a fixed prefix and suffix.
-      SQLSMALLINT odbcTypeCode =
-          TRINO_RAW_TYPE_TO_ODBC_TYPE_CODE[columnInfo.trinoRawTypeName];
-      std::string quote = isCharacterType(odbcTypeCode) ? "'" : "";
-      truncated         = writeNullTermStringToPtr(
+      SQLSMALLINT odbcTypeCode = columnInfo.odbcDataType;
+      std::string quote        = isCharacterType(odbcTypeCode) ? "'" : "";
+      truncated                = writeNullTermStringToPtr(
           CharacterAttributePtr, quote, BufferLength, StringLengthPtr);
       break;
     }
@@ -300,8 +295,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_TYPE: { // 1002
       // The same as the concise type, except that dates and times
       // are reported as SQL_DATETIME.
-      SQLSMALLINT odbcTypeCode =
-          TRINO_RAW_TYPE_TO_ODBC_TYPE_CODE[columnInfo.trinoRawTypeName];
+      SQLSMALLINT odbcTypeCode = columnInfo.odbcDataType;
       if (odbcTypeCode == SQL_TYPE_DATE or odbcTypeCode == SQL_TYPE_TIME or
           odbcTypeCode == SQL_TYPE_TIMESTAMP) {
         odbcTypeCode = SQL_DATETIME;
