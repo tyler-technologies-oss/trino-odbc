@@ -281,6 +281,26 @@ TEST_F(SQLDescribColTest, TestExecDirectReportsRejectedQuery) {
   ASSERT_EQ(ret, SQL_SUCCESS);
   EXPECT_GT(messageLen, 0);
 
+  // The record is Trino's own message, which says what went wrong.
+  // Trino's Java stack trace stays out of it, since SQL Server prints
+  // every record it's given.
+  std::string messageText(reinterpret_cast<char*>(message));
+  EXPECT_NE(messageText.find("TABLE_NOT_FOUND"), std::string::npos)
+      << messageText;
+  EXPECT_EQ(messageText.find("io.trino."), std::string::npos) << messageText;
+  EXPECT_STREQ(reinterpret_cast<const char*>(sqlState), "42S02");
+
+  // The whole error fits in that one record.
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      2,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  EXPECT_EQ(ret, SQL_NO_DATA);
+
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
