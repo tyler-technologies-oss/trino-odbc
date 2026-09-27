@@ -195,3 +195,28 @@ TEST_F(GetInfoTest, TruncationIsReportedAndThenCleared) {
   ASSERT_EQ(ret, SQL_SUCCESS);
   ASSERT_STREQ(reinterpret_cast<char*>(sqlState), "HY091");
 }
+
+TEST_F(GetInfoTest, NullInfoValueReportsTheStringLength) {
+  // MSDASQL, which SQL Server linked servers use, asks for the length
+  // of SQL_DATABASE_NAME this way before it allocates a buffer.
+  SQLSMALLINT StrLen_or_IndPtr = 0;
+  SQLRETURN ret =
+      SQLGetInfo(this->hDbc, SQL_DATABASE_NAME, nullptr, 0, &StrLen_or_IndPtr);
+
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(StrLen_or_IndPtr, 6);
+}
+
+TEST_F(GetInfoTest, TransactionsAreReportedAsUnsupported) {
+  // MSDASQL won't initialize a linked server unless these succeed.
+  SQLUSMALLINT txnCapable = 99;
+  SQLRETURN ret = SQLGetInfo(this->hDbc, SQL_TXN_CAPABLE, &txnCapable, 0, 0);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(txnCapable, SQL_TC_NONE);
+
+  SQLUINTEGER defaultIsolation = 99;
+  ret                          = SQLGetInfo(
+      this->hDbc, SQL_DEFAULT_TXN_ISOLATION, &defaultIsolation, 0, 0);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  ASSERT_EQ(defaultIsolation, 0);
+}
