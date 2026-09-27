@@ -104,6 +104,8 @@ TEST_F(SQLDescribColTest, TestDescribeVarcharCol) {
 
   EXPECT_STREQ((const char*)colName, "name");
   EXPECT_EQ(dataType, SQL_VARCHAR);
+  // customer.name is a varchar(25).
+  EXPECT_EQ(colSize, 25);
 
   // Free statement handle
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
@@ -335,6 +337,53 @@ TEST_F(SQLDescribColTest, TestColAttributeAnswersWhatMSDASQLAsks) {
       hStmt, 2, SQL_DESC_CASE_SENSITIVE, nullptr, 0, nullptr, &caseSensitive);
   ASSERT_EQ(ret, SQL_SUCCESS);
   EXPECT_EQ(caseSensitive, SQL_TRUE);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+TEST_F(SQLDescribColTest, TestPreparedVarcharReportsDeclaredLength) {
+  // MSDASQL prepares each query, and SQL Server can only read a
+  // varchar it's told the length of. Prepared columns come from
+  // DESCRIBE OUTPUT, so they're described differently from executed ones.
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = "SELECT CAST(name AS varchar(8000)) AS name "
+                      "FROM tpch.sf1.nation";
+  ret               = SQLPrepare(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLCHAR colName[128];
+  SQLSMALLINT nameLen       = 0;
+  SQLSMALLINT dataType      = 0;
+  SQLULEN colSize           = 0;
+  SQLSMALLINT decimalDigits = 0;
+  SQLSMALLINT nullable      = 0;
+  ret                       = SQLDescribeCol(hStmt,
+                       1,
+                       colName,
+                       sizeof(colName),
+                       &nameLen,
+                       &dataType,
+                       &colSize,
+                       &decimalDigits,
+                       &nullable);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(dataType, SQL_VARCHAR);
+  EXPECT_EQ(colSize, 8000);
+
+  SQLLEN octetLength = 0;
+  ret                = SQLColAttribute(
+      hStmt, 1, SQL_DESC_OCTET_LENGTH, nullptr, 0, nullptr, &octetLength);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(octetLength, 8000);
+
+  SQLLEN displaySize = 0;
+  ret                = SQLColAttribute(
+      hStmt, 1, SQL_DESC_DISPLAY_SIZE, nullptr, 0, nullptr, &displaySize);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(displaySize, 8000);
 
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);

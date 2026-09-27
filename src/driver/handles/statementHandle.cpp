@@ -64,6 +64,13 @@ void Statement::columnsChangedCallback(TrinoQuery* trinoQuery) {
                "ERROR: Key " + trinoRawType +
                    " not found in type code lookup: " + ex.what());
     }
+    // A varchar(n) holds up to n characters, which SQLColAttribute
+    // reports as its length and octet length.
+    int64_t varcharLength = colDescription.getDeclaredVarcharLength();
+    if (varcharLength > 0) {
+      field.length      = static_cast<SQLINTEGER>(varcharLength);
+      field.octetLength = static_cast<SQLLEN>(varcharLength);
+    }
     this->getRowDescriptor()->setField(i, field);
     i++;
   }

@@ -10,15 +10,19 @@
 
 SQLULEN static inferODBCColumnSize(ColumnDescription description) {
   std::string rawType = description.getRawType();
+  // A varchar(n) holds up to n characters. An unbounded varchar has no
+  // size to report, and falls through to the lookup below.
+  int64_t varcharLength = description.getDeclaredVarcharLength();
+  if (varcharLength > 0) {
+    WriteLog(LL_TRACE,
+             "  ODBC Type Size inferred as: " + std::to_string(varcharLength));
+    return static_cast<SQLULEN>(varcharLength);
+  }
   if (TRINO_RAW_TYPE_TO_ODBC_SIZE_BYTES.count(rawType)) {
     SQLULEN odbcSizeBytes = TRINO_RAW_TYPE_TO_ODBC_SIZE_BYTES[rawType];
     WriteLog(LL_TRACE,
              "  ODBC Type Size inferred as: " + std::to_string(odbcSizeBytes));
     return odbcSizeBytes;
-  }
-  if (rawType == "varchar") {
-    // Varchars have an argument that specifies their length.
-    return description.getTypeArguments()[0]["value"];
   }
   throw std::invalid_argument("Cannot determine size of column: " +
                               description.getName());
