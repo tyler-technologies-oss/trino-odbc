@@ -282,3 +282,60 @@ TEST_F(SQLDescribColTest, TestExecDirectReportsRejectedQuery) {
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);
 }
+
+TEST_F(SQLDescribColTest, TestColAttributeAnswersWhatMSDASQLAsks) {
+  // MSDASQL, which SQL Server linked servers use, gives up on a query
+  // if any of these fields fails.
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // nationkey is a BIGINT, and name is a VARCHAR(25).
+  std::string query = "SELECT nationkey, name FROM tpch.sf1.nation";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLCHAR label[32];
+  SQLSMALLINT labelLen = 0;
+  ret                  = SQLColAttribute(
+      hStmt, 2, SQL_DESC_LABEL, label, sizeof(label), &labelLen, nullptr);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_STREQ(reinterpret_cast<const char*>(label), "name");
+
+  SQLCHAR tableName[32];
+  SQLSMALLINT tableNameLen = -1;
+  ret                      = SQLColAttribute(hStmt,
+                        1,
+                        SQL_DESC_BASE_TABLE_NAME,
+                        tableName,
+                        sizeof(tableName),
+                        &tableNameLen,
+                        nullptr);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(tableNameLen, 0);
+
+  SQLLEN count = 0;
+  ret = SQLColAttribute(hStmt, 1, SQL_DESC_COUNT, nullptr, 0, nullptr, &count);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(count, 2);
+
+  SQLLEN displaySize = 0;
+  ret                = SQLColAttribute(
+      hStmt, 1, SQL_DESC_DISPLAY_SIZE, nullptr, 0, nullptr, &displaySize);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(displaySize, 20);
+
+  SQLLEN updatable = -1;
+  ret              = SQLColAttribute(
+      hStmt, 1, SQL_DESC_UPDATABLE, nullptr, 0, nullptr, &updatable);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(updatable, SQL_ATTR_READONLY);
+
+  SQLLEN caseSensitive = -1;
+  ret                  = SQLColAttribute(
+      hStmt, 2, SQL_DESC_CASE_SENSITIVE, nullptr, 0, nullptr, &caseSensitive);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(caseSensitive, SQL_TRUE);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
