@@ -27,11 +27,17 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
   WriteLog(LL_TRACE,
            "  Requesting information type: " + std::to_string(InfoType));
 
+  // A null InfoValue is allowed. The application is only asking how
+  // long a string value is, as MSDASQL (SQL Server linked servers)
+  // does for SQL_DATABASE_NAME. Numbers are written to a scratch
+  // value instead, and a buffer length of 0 keeps strings from being
+  // written anywhere while still reporting their length.
+  bool lengthOnly      = false;
+  SQLULEN scratchValue = 0;
   if (InfoValue == nullptr) {
-    WriteLog(LL_ERROR, "  ERROR: Exiting SQLGetInfo - InfoValue is null");
-    // HY009 = Invalid use of null pointer.
-    connection->setError(ErrorInfo("InfoValue is null", "HY009"));
-    return SQL_ERROR;
+    lengthOnly   = true;
+    InfoValue    = &scratchValue;
+    BufferLength = 0;
   }
 
   // Set by the cases that return a string, if the caller's buffer
@@ -86,6 +92,13 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
           InfoValue, "", BufferLength, StringLengthPtr, encoding);
       break;
     }
+    case SQL_DATABASE_NAME: { // 16
+      // The name of the current database. This matches what
+      // SQLGetConnectAttr reports for SQL_ATTR_CURRENT_CATALOG.
+      truncated = writeNullTermStringToPtr(
+          InfoValue, "system", BufferLength, StringLengthPtr, encoding);
+      break;
+    }
     case SQL_DBMS_NAME: { // 17
       // What's the name of this DBMS? Trino!
       truncated = writeNullTermStringToPtr(
@@ -132,6 +145,13 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
       *((SQLUSMALLINT*)InfoValue) = SQL_CB_DELETE;
       break;
     }
+    case SQL_DEFAULT_TXN_ISOLATION: { // 26
+      // Zero means the driver doesn't support transactions. MSDASQL
+      // (SQL Server linked servers) won't open a connection unless
+      // this succeeds.
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
     case SQL_IDENTIFIER_QUOTE_CHAR: { // 29
       // TODO: What is the actual behavior?
       // PyODBC wants to know this.
@@ -173,6 +193,21 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
       // Trino uses "catalog", (SQL-92 compliant).
       truncated = writeNullTermStringToPtr(
           InfoValue, "catalog", BufferLength, StringLengthPtr, encoding);
+      break;
+    }
+    case SQL_SCROLL_CONCURRENCY: { // 43
+      // Cursors are read-only.
+      *((SQLUINTEGER*)InfoValue) = SQL_SCCO_READ_ONLY;
+      break;
+    }
+    case SQL_SCROLL_OPTIONS: { // 44
+      // Cursors only move forward, one row per fetch.
+      *((SQLUINTEGER*)InfoValue) = SQL_SO_FORWARD_ONLY;
+      break;
+    }
+    case SQL_TXN_CAPABLE: { // 46
+      // This driver doesn't support transactions.
+      *((SQLUSMALLINT*)InfoValue) = SQL_TC_NONE;
       break;
     }
     case SQL_CONVERT_FUNCTIONS: { // 48
@@ -552,10 +587,25 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
       // clang-format on
       break;
     }
+    case SQL_TXN_ISOLATION_OPTION: { // 72
+      // No transactions, so no isolation levels.
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
     case SQL_DRIVER_ODBC_VER: { // 77
       // We'll target the latest version of ODBC
       truncated = writeNullTermStringToPtr(
           InfoValue, "03.80", BufferLength, StringLengthPtr, encoding);
+      break;
+    }
+    case SQL_LOCK_TYPES: { // 78
+      // SQLSetPos is not supported, so neither is locking through it.
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
+    case SQL_POS_OPERATIONS: { // 79
+      // SQLSetPos is not supported.
+      *((SQLINTEGER*)InfoValue) = 0;
       break;
     }
     case SQL_GETDATA_EXTENSIONS: { // 81
@@ -569,6 +619,16 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
         /* SQL_GD_OUTPUT_PARAMS | */
         0;
       // clang-format on
+      break;
+    }
+    case SQL_BOOKMARK_PERSISTENCE: { // 82
+      // Bookmarks are not supported.
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
+    case SQL_STATIC_SENSITIVITY: { // 83
+      // Results are read-only, so there are no changes to be seen.
+      *((SQLUINTEGER*)InfoValue) = 0;
       break;
     }
     case SQL_COLUMN_ALIAS: { // 87
@@ -700,6 +760,34 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
       *((SQLUINTEGER*)InfoValue) = 0 | 0;
       break;
     }
+    case SQL_DYNAMIC_CURSOR_ATTRIBUTES1: { // 144
+      // Only forward-only cursors are supported.
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
+    case SQL_DYNAMIC_CURSOR_ATTRIBUTES2: { // 145
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
+    case SQL_FORWARD_ONLY_CURSOR_ATTRIBUTES1: { // 146
+      // SQLFetchScroll can only fetch the next row.
+      *((SQLUINTEGER*)InfoValue) = SQL_CA1_NEXT;
+      break;
+    }
+    case SQL_FORWARD_ONLY_CURSOR_ATTRIBUTES2: { // 147
+      // Results are read-only.
+      *((SQLUINTEGER*)InfoValue) = SQL_CA2_READ_ONLY_CONCURRENCY;
+      break;
+    }
+    case SQL_KEYSET_CURSOR_ATTRIBUTES1: { // 150
+      // Only forward-only cursors are supported.
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
+    case SQL_KEYSET_CURSOR_ATTRIBUTES2: { // 151
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
     case SQL_ODBC_INTERFACE_CONFORMANCE: { // 152
       // How much of the ODBC interface spec does this driver implement?
       // Just the core level for now.
@@ -770,6 +858,15 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
           SQL_SVE_NULLIF |   // NULLIF(value1, value2) is supported.
           0;
       // clang-format on
+      break;
+    }
+    case SQL_STATIC_CURSOR_ATTRIBUTES1: { // 167
+      // Only forward-only cursors are supported.
+      *((SQLUINTEGER*)InfoValue) = 0;
+      break;
+    }
+    case SQL_STATIC_CURSOR_ATTRIBUTES2: { // 168
+      *((SQLUINTEGER*)InfoValue) = 0;
       break;
     }
     case SQL_AGGREGATE_FUNCTIONS: { // 169
@@ -850,7 +947,7 @@ static SQLRETURN getInfo(SQLHDBC ConnectionHandle,
     }
   }
 
-  if (truncated) {
+  if (truncated and not lengthOnly) {
     WriteLog(LL_WARN,
              "  Exiting SQLGetInfo - the buffer provided for information "
              "type " +

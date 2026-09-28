@@ -67,7 +67,8 @@ SQLRETURN SQL_API SQLAllocHandle(SQLSMALLINT HandleType,
       WriteLog(LL_TRACE, "  Constructing statement handle");
       Connection* connection = reinterpret_cast<Connection*>(InputHandle);
       Statement* statement   = new Statement(connection->connectionConfig);
-      *OutputHandle          = reinterpret_cast<SQLHANDLE>(statement);
+      statement->unboundedVarcharAsLong = connection->unboundedVarcharAsLong;
+      *OutputHandle = reinterpret_cast<SQLHANDLE>(statement);
       return SQL_SUCCESS;
     }
 

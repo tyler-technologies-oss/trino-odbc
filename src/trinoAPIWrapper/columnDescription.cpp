@@ -6,7 +6,7 @@
 #include "../util/stringSplitAndTrim.hpp"
 
 // Trino reports an unbounded varchar as having this length.
-const int64_t UNBOUNDED_VARCHAR_LENGTH = 2147483647;
+extern const int64_t UNBOUNDED_VARCHAR_LENGTH = 2147483647;
 
 ColumnDescription::ColumnDescription(const json& columnInfo) {
   this->name          = columnInfo["name"];
@@ -29,6 +29,23 @@ const std::string& ColumnDescription::getRawType() const {
 
 const json& ColumnDescription::getTypeArguments() const {
   return this->typeArguments;
+}
+
+int64_t ColumnDescription::getDeclaredVarcharLength() const {
+  if (this->rawType != "varchar" or not this->typeArguments.is_array() or
+      this->typeArguments.empty()) {
+    return 0;
+  }
+  const json& lengthArgument = this->typeArguments[0];
+  if (not lengthArgument.contains("value") or
+      not lengthArgument["value"].is_number_integer()) {
+    return 0;
+  }
+  int64_t length = lengthArgument["value"].get<int64_t>();
+  if (length <= 0 or length >= UNBOUNDED_VARCHAR_LENGTH) {
+    return 0;
+  }
+  return length;
 }
 
 json columnJsonFromTypeName(std::string name, std::string typeName) {

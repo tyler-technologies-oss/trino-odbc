@@ -11,6 +11,7 @@
 extern std::map<std::string, std::string> DRIVER_CONFIG_DEFAULT_VALUES;
 extern std::vector<std::string> LOG_LEVEL_NAMES;
 extern std::vector<std::string> AUTH_METHOD_NAMES;
+extern std::vector<std::string> UNBOUNDED_VARCHAR_NAMES;
 
 class DriverConfig {
   private:
@@ -27,6 +28,9 @@ class DriverConfig {
     std::string oidcScope        = "";
     std::string tokenEndpoint    = "";
     std::string grantType        = "";
+    // How to describe a varchar with no length. See
+    // UNBOUNDED_VARCHAR_NAMES.
+    bool unboundedVarcharAsLong = false;
 
     // Metadata describing the status of this config object.
     bool isSaved = false;
@@ -76,6 +80,10 @@ class DriverConfig {
 
     std::string getGrantType();
     void setGrantType(std::string grantType);
+
+    std::string getUnboundedVarcharStr();
+    bool getUnboundedVarcharAsLong();
+    void setUnboundedVarchar(std::string unboundedVarchar);
 
     std::string serialize();
     static DriverConfig deserialize(const std::string& jsonStr);

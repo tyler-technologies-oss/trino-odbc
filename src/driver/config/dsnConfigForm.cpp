@@ -25,6 +25,7 @@ constexpr int ID_STATIC_OIDC_DISC     = 112;
 constexpr int ID_STATIC_CLIENT_ID     = 113;
 constexpr int ID_STATIC_CLIENT_SECRET = 114;
 constexpr int ID_STATIC_OIDC_SCOPE    = 115;
+constexpr int ID_COMBO_UNBOUNDED_VC   = 116;
 constexpr int BUF_LEN                 = 1024;
 
 
@@ -60,6 +61,9 @@ DSNForm::DSNForm(HWND parent, std::map<std::string, std::string> attributes) {
   if (attributes.count("oidcScope") > 0) {
     this->configResult.setOidcScope(attributes.at("oidcScope"));
   }
+  if (attributes.count("unboundedVarchar") > 0) {
+    this->configResult.setUnboundedVarchar(attributes.at("unboundedVarchar"));
+  }
 }
 
 
@@ -94,6 +98,7 @@ LRESULT CALLBACK WINDOW_CB(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
       HWND clientSecretLabel     = GetDlgItem(hwnd, ID_STATIC_CLIENT_SECRET);
       HWND oidcScopeItem         = GetDlgItem(hwnd, ID_EDIT_OIDC_SCOPE);
       HWND oidcScopeLabel        = GetDlgItem(hwnd, ID_STATIC_OIDC_SCOPE);
+      HWND unboundedVarcharItem  = GetDlgItem(hwnd, ID_COMBO_UNBOUNDED_VC);
       char buf[BUF_LEN]          = {0};
       switch (LOWORD(wParam)) {
         case ID_BUTTON_SAVE: {
@@ -136,6 +141,13 @@ LRESULT CALLBACK WINDOW_CB(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
           // Handle the OIDC Scope
           GetWindowText(oidcScopeItem, buf, BUF_LEN);
           driverConfigPtr->setOidcScope(std::string(buf));
+
+          // Handle how unbounded varchars are described
+          LRESULT varcharIndex =
+              SendMessage(unboundedVarcharItem, CB_GETCURSEL, 0, 0);
+          SendMessage(
+              unboundedVarcharItem, CB_GETLBTEXT, varcharIndex, (LPARAM)buf);
+          driverConfigPtr->setUnboundedVarchar(std::string(buf));
 
           driverConfigPtr->setIsSaved(true);
 
@@ -255,6 +267,7 @@ void DSNForm::ShowDSNForm() {
   labelMaker(form, 190, ID_STATIC_CLIENT_ID, "Client ID:", oidcVis);
   labelMaker(form, 220, ID_STATIC_CLIENT_SECRET, "Client Secret:", oidcVis);
   labelMaker(form, 250, ID_STATIC_OIDC_SCOPE, "OIDC Scope:", oidcVis);
+  labelMaker(form, 280, NULL, "Unbounded Varchar:", visible);
 
   WriteLog(LL_TRACE, "  Creating Text Entries");
   HWND hwndDsn              = editMaker(form, 10, ID_EDIT_DSN, visible);
@@ -280,6 +293,10 @@ void DSNForm::ShowDSNForm() {
   HWND hwndAuthMethod =
       comboboxMaker(form, 130, ID_COMBO_AUTHMETHOD, AUTH_METHOD_NAMES);
 
+  WriteLog(LL_TRACE, "  Creating Unbounded Varchar Combobox");
+  HWND hwndUnboundedVarchar =
+      comboboxMaker(form, 280, ID_COMBO_UNBOUNDED_VC, UNBOUNDED_VARCHAR_NAMES);
+
   WriteLog(LL_TRACE, "  Pre-populating the text fields");
   setEditText(hwndDsn, this->configResult.getDSN());
   setEditText(hwndHostname, this->configResult.getHostname());
@@ -292,6 +309,8 @@ void DSNForm::ShowDSNForm() {
   WriteLog(LL_TRACE, "  Pre-poplating Comboboxes");
   setCombobox(hwndLogLevel, this->configResult.getLogLevelStr());
   setCombobox(hwndAuthMethod, this->configResult.getAuthMethodStr());
+  setCombobox(hwndUnboundedVarchar,
+              this->configResult.getUnboundedVarcharStr());
 
   WriteLog(LL_TRACE, "  Creating Buttons");
   HWND hwndSave   = buttonMaker(form, 160, ID_BUTTON_SAVE, "Save");

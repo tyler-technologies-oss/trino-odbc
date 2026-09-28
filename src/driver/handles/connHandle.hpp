@@ -26,6 +26,10 @@ class Connection {
     SQLINTEGER ATTR_AutoCommitMode = SQL_AUTOCOMMIT_ON;
     SQLUINTEGER ATTR_LoginTimeout  = 0;
 
+    // Describe varchars with no length as SQL_LONGVARCHAR. Set from the
+    // DSN's unboundedVarchar setting, and given to each statement.
+    bool unboundedVarcharAsLong = false;
+
     std::string getServerVersion();
     void setError(ErrorInfo errorInfo);
     ErrorInfo getError();

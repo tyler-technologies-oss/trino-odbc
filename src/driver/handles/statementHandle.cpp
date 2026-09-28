@@ -64,6 +64,19 @@ void Statement::columnsChangedCallback(TrinoQuery* trinoQuery) {
                "ERROR: Key " + trinoRawType +
                    " not found in type code lookup: " + ex.what());
     }
+    // A varchar(n) holds up to n characters, which SQLColAttribute
+    // reports as its length and octet length.
+    int64_t varcharLength = colDescription.getDeclaredVarcharLength();
+    if (varcharLength > 0) {
+      field.length      = static_cast<SQLINTEGER>(varcharLength);
+      field.octetLength = static_cast<SQLLEN>(varcharLength);
+    } else if (trinoRawType == "varchar" and this->unboundedVarcharAsLong) {
+      // A varchar with no length becomes long text, as large as Trino
+      // says it can be. See the unboundedVarchar setting.
+      field.odbcDataType = SQL_LONGVARCHAR;
+      field.length       = static_cast<SQLINTEGER>(UNBOUNDED_VARCHAR_LENGTH);
+      field.octetLength  = static_cast<SQLLEN>(UNBOUNDED_VARCHAR_LENGTH);
+    }
     this->getRowDescriptor()->setField(i, field);
     i++;
   }
@@ -170,9 +183,8 @@ void Statement::resetGetDataPosition() {
 }
 
 void Statement::setFetchedPosition(SQLLEN pos) {
-  if (this->impRowDesc->Field_RowsProcessedPtr) {
-    *(this->impRowDesc->Field_RowsProcessedPtr) = pos;
-  }
+  // This is the row's position in the result, not the number of rows
+  // fetched. SQLFetch writes that to SQL_ATTR_ROWS_FETCHED_PTR.
   this->fetchedPosition = pos;
 }
 

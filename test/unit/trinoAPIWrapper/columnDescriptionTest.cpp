@@ -43,3 +43,16 @@ TEST(ColumnJsonFromTypeNameTest, NestedTypeArgumentsAreLeftOut) {
   EXPECT_EQ(column.getRawType(), "array");
   EXPECT_TRUE(column.getTypeArguments().empty());
 }
+
+TEST(ColumnDescriptionTest, DeclaredVarcharLength) {
+  ColumnDescription bounded(columnJsonFromTypeName("name", "varchar(25)"));
+  EXPECT_EQ(bounded.getDeclaredVarcharLength(), 25);
+
+  // An unbounded varchar has no declared length, even though Trino
+  // gives it one.
+  ColumnDescription unbounded(columnJsonFromTypeName("name", "varchar"));
+  EXPECT_EQ(unbounded.getDeclaredVarcharLength(), 0);
+
+  ColumnDescription other(columnJsonFromTypeName("cost", "decimal(38, 9)"));
+  EXPECT_EQ(other.getDeclaredVarcharLength(), 0);
+}

@@ -104,6 +104,8 @@ TEST_F(SQLDescribColTest, TestDescribeVarcharCol) {
 
   EXPECT_STREQ((const char*)colName, "name");
   EXPECT_EQ(dataType, SQL_VARCHAR);
+  // customer.name is a varchar(25).
+  EXPECT_EQ(colSize, 25);
 
   // Free statement handle
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
@@ -278,6 +280,130 @@ TEST_F(SQLDescribColTest, TestExecDirectReportsRejectedQuery) {
                       &messageLen);
   ASSERT_EQ(ret, SQL_SUCCESS);
   EXPECT_GT(messageLen, 0);
+
+  // The record is Trino's own message, which says what went wrong.
+  // Trino's Java stack trace stays out of it, since SQL Server prints
+  // every record it's given.
+  std::string messageText(reinterpret_cast<char*>(message));
+  EXPECT_NE(messageText.find("TABLE_NOT_FOUND"), std::string::npos)
+      << messageText;
+  EXPECT_EQ(messageText.find("io.trino."), std::string::npos) << messageText;
+  EXPECT_STREQ(reinterpret_cast<const char*>(sqlState), "42S02");
+
+  // The whole error fits in that one record.
+  ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                      hStmt,
+                      2,
+                      sqlState,
+                      &nativeError,
+                      message,
+                      sizeof(message),
+                      &messageLen);
+  EXPECT_EQ(ret, SQL_NO_DATA);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+TEST_F(SQLDescribColTest, TestColAttributeAnswersWhatMSDASQLAsks) {
+  // MSDASQL, which SQL Server linked servers use, gives up on a query
+  // if any of these fields fails.
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  // nationkey is a BIGINT, and name is a VARCHAR(25).
+  std::string query = "SELECT nationkey, name FROM tpch.sf1.nation";
+  ret               = SQLExecDirect(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLCHAR label[32];
+  SQLSMALLINT labelLen = 0;
+  ret                  = SQLColAttribute(
+      hStmt, 2, SQL_DESC_LABEL, label, sizeof(label), &labelLen, nullptr);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_STREQ(reinterpret_cast<const char*>(label), "name");
+
+  SQLCHAR tableName[32];
+  SQLSMALLINT tableNameLen = -1;
+  ret                      = SQLColAttribute(hStmt,
+                        1,
+                        SQL_DESC_BASE_TABLE_NAME,
+                        tableName,
+                        sizeof(tableName),
+                        &tableNameLen,
+                        nullptr);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(tableNameLen, 0);
+
+  SQLLEN count = 0;
+  ret = SQLColAttribute(hStmt, 1, SQL_DESC_COUNT, nullptr, 0, nullptr, &count);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(count, 2);
+
+  SQLLEN displaySize = 0;
+  ret                = SQLColAttribute(
+      hStmt, 1, SQL_DESC_DISPLAY_SIZE, nullptr, 0, nullptr, &displaySize);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(displaySize, 20);
+
+  SQLLEN updatable = -1;
+  ret              = SQLColAttribute(
+      hStmt, 1, SQL_DESC_UPDATABLE, nullptr, 0, nullptr, &updatable);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(updatable, SQL_ATTR_READONLY);
+
+  SQLLEN caseSensitive = -1;
+  ret                  = SQLColAttribute(
+      hStmt, 2, SQL_DESC_CASE_SENSITIVE, nullptr, 0, nullptr, &caseSensitive);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(caseSensitive, SQL_TRUE);
+
+  ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+}
+
+TEST_F(SQLDescribColTest, TestPreparedVarcharReportsDeclaredLength) {
+  // MSDASQL prepares each query, and SQL Server can only read a
+  // varchar it's told the length of. Prepared columns come from
+  // DESCRIBE OUTPUT, so they're described differently from executed ones.
+  SQLRETURN ret = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  std::string query = "SELECT CAST(name AS varchar(8000)) AS name "
+                      "FROM tpch.sf1.nation";
+  ret               = SQLPrepare(hStmt, (SQLCHAR*)query.c_str(), SQL_NTS);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+
+  SQLCHAR colName[128];
+  SQLSMALLINT nameLen       = 0;
+  SQLSMALLINT dataType      = 0;
+  SQLULEN colSize           = 0;
+  SQLSMALLINT decimalDigits = 0;
+  SQLSMALLINT nullable      = 0;
+  ret                       = SQLDescribeCol(hStmt,
+                       1,
+                       colName,
+                       sizeof(colName),
+                       &nameLen,
+                       &dataType,
+                       &colSize,
+                       &decimalDigits,
+                       &nullable);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(dataType, SQL_VARCHAR);
+  EXPECT_EQ(colSize, 8000);
+
+  SQLLEN octetLength = 0;
+  ret                = SQLColAttribute(
+      hStmt, 1, SQL_DESC_OCTET_LENGTH, nullptr, 0, nullptr, &octetLength);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(octetLength, 8000);
+
+  SQLLEN displaySize = 0;
+  ret                = SQLColAttribute(
+      hStmt, 1, SQL_DESC_DISPLAY_SIZE, nullptr, 0, nullptr, &displaySize);
+  ASSERT_EQ(ret, SQL_SUCCESS);
+  EXPECT_EQ(displaySize, 8000);
 
   ret = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
   ASSERT_EQ(ret, SQL_SUCCESS);

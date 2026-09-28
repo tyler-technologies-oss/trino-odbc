@@ -42,6 +42,7 @@ DriverConfig readDriverConfigFromProfile(std::string dsn) {
   config.setOidcDiscoveryUrl(readFromPrivateProfile(dsn, "oidcDiscoveryUrl"));
   config.setClientId(readFromPrivateProfile(dsn, "clientId"));
   config.setOidcScope(readFromPrivateProfile(dsn, "oidcScope"));
+  config.setUnboundedVarchar(readFromPrivateProfile(dsn, "unboundedVarchar"));
 
   std::string secretEncryptionLevel =
       readFromPrivateProfile(dsn, "secretEncryptionLevel");

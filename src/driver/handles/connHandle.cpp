@@ -32,7 +32,7 @@ void Connection::configure(DriverConfig config) {
   // The destructor will clean it up if that's happened.
   checkInputs(config);
 
-  this->connectionConfig = new ConnectionConfig(config.getHostname(),
+  this->connectionConfig       = new ConnectionConfig(config.getHostname(),
                                                 config.getPortNum(),
                                                 config.getAuthMethodEnum(),
                                                 config.getDSN(),
@@ -42,6 +42,7 @@ void Connection::configure(DriverConfig config) {
                                                 config.getOidcScope(),
                                                 config.getGrantType(),
                                                 config.getTokenEndpoint());
+  this->unboundedVarcharAsLong = config.getUnboundedVarcharAsLong();
 }
 
 void Connection::setError(ErrorInfo errorInfo) {

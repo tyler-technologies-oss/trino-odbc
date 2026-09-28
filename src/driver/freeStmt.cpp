@@ -22,9 +22,9 @@ SQLRETURN SQL_API SQLFreeStmt(SQLHSTMT StatementHandle, SQLUSMALLINT Option) {
       return SQL_SUCCESS;
     }
     case (SQL_UNBIND): {
-      WriteLog(LL_ERROR,
-               "  ERROR: Unimplemented: Closing statement with SQL_UNBIND");
-      return SQL_ERROR;
+      WriteLog(LL_TRACE, "  Releasing all bound columns");
+      stmt->getRowDescriptor()->unbindColumns();
+      return SQL_SUCCESS;
     }
     case (SQL_RESET_PARAMS): {
       WriteLog(LL_TRACE, "  Releasing all bound parameters");

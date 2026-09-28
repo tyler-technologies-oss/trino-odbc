@@ -3,4 +3,5 @@
 #include "windowsLean.hpp"
 #include <string>
 
-void openURLInDefaultBrowser(const std::string& url);
+// Returns false if no browser could be shown to the user.
+bool openURLInDefaultBrowser(const std::string& url);

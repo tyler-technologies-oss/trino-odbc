@@ -172,6 +172,10 @@ CURL* ConnectionConfig::getCurl() {
     curl_easy_setopt(this->curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
   }
 
+  // Authentication is tried once per request. If it fails, the token
+  // is still expired, and trying again would loop here forever.
+  bool authAttempted = false;
+
 curlSetup:
   // Clear the previous response data, we do not want to append to it.
   this->responseData.clear();
@@ -210,9 +214,10 @@ curlSetup:
   // Now that we have a fully configured CURL handle, check if we need to do
   // any required auth steps. We may need to use the configured handle to
   // perform the authentication.
-  if (this->authConfigPtr->isExpired()) {
+  if (not authAttempted and this->authConfigPtr->isExpired()) {
     WriteLog(LL_TRACE,
              "  Detected expired authentication. Reauthenticating...");
+    authAttempted = true;
     this->authConfigPtr->refresh(
         this->curl, &(this->responseData), &(this->responseHeaderData));
     goto curlSetup;
