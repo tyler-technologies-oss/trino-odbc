@@ -1,6 +1,8 @@
 #include "externalAuthProvider.hpp"
 
+#include <chrono>
 #include <map>
+#include <thread>
 
 #include "nlohmann/json.hpp"
 
@@ -14,11 +16,18 @@
 using json = nlohmann::json;
 
 /*
-Depending on network latency, it might be
-necessary to hit the auth token endpoint more than
-once.
+How long the user has to finish logging in through the browser
+before the driver gives up waiting for a token.
 */
-int MAX_AUTH_TOKEN_RETRIES                 = 2;
+std::chrono::minutes EXTERNAL_AUTH_LOGIN_TIMEOUT = std::chrono::minutes(5);
+/*
+Trino holds each token poll open for up to 10 seconds before it
+answers that the login is still pending. The request timeout has to
+be longer than that, or curl gives up before Trino answers.
+*/
+long TOKEN_POLL_REQUEST_TIMEOUT_MS = 30000;
+// The request timeout every other request uses, see connectionConfig.cpp.
+long DEFAULT_REQUEST_TIMEOUT_MS            = 10000;
 std::string EXTERNAL_AUTH_TRIGGER_ENDPOINT = "v1/statement";
 std::string EXTERNAL_AUTH_TRIGGER_QUERY    = "SELECT 'authenticating...'";
 
@@ -128,14 +137,17 @@ std::string refreshExternalAuth(ExternalAuthParams& params) {
 
   // Once that's done, we need to hit the a token server to obtain
   // an auth token. This is another endpoint on the trino coordinator
-  // The coordinator is kind enough to block this call for a few
-  // seconds while the redirect/auth step is handled. That means
-  // we don't need to wait here in the driver. We may need to retry
-  // though, if the auth between the coordinator and the identity
-  // provider is slow.
-  int tries               = 0;
+  // The coordinator blocks this call for up to 10 seconds while the
+  // user logs in. If the login isn't done by then, it answers with a
+  // "nextUri" to poll again, so we keep polling until the user
+  // finishes or the login timeout runs out.
   std::string tokenServer = authServerInfo.at("x_token_server");
-  while (tries <= MAX_AUTH_TOKEN_RETRIES) {
+  std::string token       = "";
+  auto deadline =
+      std::chrono::steady_clock::now() + EXTERNAL_AUTH_LOGIN_TIMEOUT;
+  curl_easy_setopt(
+      params.curl, CURLOPT_TIMEOUT_MS, TOKEN_POLL_REQUEST_TIMEOUT_MS);
+  while (std::chrono::steady_clock::now() < deadline) {
     // Clear out the buffers for curl callbacks so we
     // don't end up with data from the prior CURL request
     params.responseData->clear();
@@ -150,23 +162,48 @@ std::string refreshExternalAuth(ExternalAuthParams& params) {
 
     // Hit the token server
     CURLcode res = curl_easy_perform(params.curl);
-
-    // Parse the response as JSON, it will contain a "token" key
-    // that is the access token.
-    json responseJson = json::parse(*params.responseData);
-    if (responseJson.contains("token")) {
-      // This is the success path. We expect to hit this every time
-      // for a DB that is actually set up with token auth.
-      WriteLog(LL_INFO, "  Authentication completed successfully");
-      return responseJson["token"];
-    } else if (responseJson.contains("next_uri")) {
-      tokenServer = responseJson["next_uri"];
+    if (res != CURLE_OK) {
+      WriteLog(LL_DEBUG,
+               "  Token poll failed, retrying: " +
+                   std::string(curl_easy_strerror(res)));
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      continue;
     }
-    tries++;
+
+    // Parse the response as JSON. It holds a "token" once the user
+    // has logged in, a "nextUri" while the login is still pending,
+    // or an "error" if the login failed.
+    json responseJson = json::parse(*params.responseData, nullptr, false);
+    if (responseJson.is_discarded() or not responseJson.is_object()) {
+      WriteLog(LL_DEBUG,
+               "  Token poll returned an unexpected response, retrying: " +
+                   *params.responseData);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      continue;
+    }
+    if (responseJson.contains("token")) {
+      // This is the success path.
+      WriteLog(LL_INFO, "  Authentication completed successfully");
+      token = responseJson["token"].get<std::string>();
+      break;
+    } else if (responseJson.contains("error")) {
+      WriteLog(LL_ERROR,
+               "  ERROR: External auth was rejected: " +
+                   responseJson["error"].dump());
+      break;
+    } else if (responseJson.contains("nextUri")) {
+      WriteLog(LL_TRACE, "  Waiting for the browser login to finish");
+      tokenServer = responseJson["nextUri"].get<std::string>();
+    }
   }
-  // This is the failure path, we didn't get a token.
-  WriteLog(LL_ERROR, "  External auth failed");
-  return "";
+  // Put back the request timeout that every other request uses.
+  curl_easy_setopt(params.curl, CURLOPT_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS);
+
+  if (token.empty()) {
+    // This is the failure path, we didn't get a token.
+    WriteLog(LL_ERROR, "  External auth failed");
+  }
+  return token;
 }
 
 

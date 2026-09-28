@@ -6,6 +6,7 @@
 
 #include "../util/stringFromChar.hpp"
 #include "../util/stringSplitAndTrim.hpp"
+#include "../util/unicodeConversion.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 
@@ -169,4 +170,36 @@ SQLRETURN SQL_API SQLTables(SQLHSTMT StatementHandle,
   }
 
   return SQL_SUCCESS;
+}
+
+SQLRETURN SQL_API
+SQLTablesW(SQLHSTMT StatementHandle,
+           _In_reads_opt_(NameLength1) SQLWCHAR* CatalogNameChars,
+           SQLSMALLINT NameLength1,
+           _In_reads_opt_(NameLength2) SQLWCHAR* SchemaNameChars,
+           SQLSMALLINT NameLength2,
+           _In_reads_opt_(NameLength3) SQLWCHAR* TableNameChars,
+           SQLSMALLINT NameLength3,
+           _In_reads_opt_(NameLength4) SQLWCHAR* TableTypeChars,
+           SQLSMALLINT NameLength4) {
+  WriteLog(LL_TRACE, "Entering SQLTablesW");
+  // A missing name reads as an empty string, which is how SQLTables
+  // treats one too.
+  std::string catalogName = stringFromWideChar(
+      reinterpret_cast<char16_t*>(CatalogNameChars), NameLength1);
+  std::string schemaName = stringFromWideChar(
+      reinterpret_cast<char16_t*>(SchemaNameChars), NameLength2);
+  std::string tableName = stringFromWideChar(
+      reinterpret_cast<char16_t*>(TableNameChars), NameLength3);
+  std::string tableType = stringFromWideChar(
+      reinterpret_cast<char16_t*>(TableTypeChars), NameLength4);
+  return SQLTables(StatementHandle,
+                   reinterpret_cast<SQLCHAR*>(catalogName.data()),
+                   static_cast<SQLSMALLINT>(catalogName.size()),
+                   reinterpret_cast<SQLCHAR*>(schemaName.data()),
+                   static_cast<SQLSMALLINT>(schemaName.size()),
+                   reinterpret_cast<SQLCHAR*>(tableName.data()),
+                   static_cast<SQLSMALLINT>(tableName.size()),
+                   reinterpret_cast<SQLCHAR*>(tableType.data()),
+                   static_cast<SQLSMALLINT>(tableType.size()));
 }

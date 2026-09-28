@@ -79,48 +79,24 @@ static SQLLEN getDisplaySize(SQLSMALLINT odbcTypeCode,
   }
 }
 
-#pragma warning(push)
 /*
-The CharacterAttributePtr and NumericAttributePtr fields may
-be unused if they aren't relevant to the requested attribute/column.
-This is a documented expectation for these out parameters, so we'll
-disable the warning about returning uninitialized memory in an out
-parameter.
-https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlcolattribute-function
+The work of SQLColAttribute and SQLColAttributeW. String attributes
+are written for the kind of function that was called, and
+BufferLength is in bytes for both.
+
+Numeric attributes must be written as a whole SQLLEN. Writing only 4
+bytes on 64-bit leaves the upper half untouched, so a negative type
+code such as SQL_BIGINT (-5) or SQL_BIT (-7) is read back by the
+application as a large positive number.
 */
-#pragma warning(disable : 6101)
-
-/*
- The signature of this function differs between 64-bit and 32-bit
- targets. For 32-bit, NumericAttributePtr is a SQLPOINTER, but for
- 64-bit, its a SQLLEN*.
-
- Either way, numeric attributes must be written as a whole SQLLEN.
- Writing only 4 bytes on 64-bit leaves the upper half untouched, so a
- negative type code such as SQL_BIGINT (-5) or SQL_BIT (-7) is read
- back by the application as a large positive number.
- */
-#if defined(_WIN64)
-SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
-                                  SQLUSMALLINT ColumnNumber,
-                                  SQLUSMALLINT FieldIdentifier,
-                                  _Out_writes_bytes_opt_(BufferLength)
-                                      SQLPOINTER CharacterAttributePtr,
-                                  SQLSMALLINT BufferLength,
-                                  _Out_opt_ SQLSMALLINT* StringLengthPtr,
-                                  _Out_opt_ SQLLEN* NumericAttributePtr) {
-#else
-SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
-                                  SQLUSMALLINT ColumnNumber,
-                                  SQLUSMALLINT FieldIdentifier,
-                                  _Out_writes_bytes_opt_(BufferLength)
-                                      SQLPOINTER CharacterAttributePtr,
-                                  SQLSMALLINT BufferLength,
-                                  _Out_opt_ SQLSMALLINT* StringLengthPtr,
-                                  _Out_opt_ SQLPOINTER NumericAttributePtr) {
-#endif
-#pragma warning(pop)
-  WriteLog(LL_TRACE, "Entering SQLColAttribute");
+static SQLRETURN colAttribute(SQLHSTMT StatementHandle,
+                              SQLUSMALLINT ColumnNumber,
+                              SQLUSMALLINT FieldIdentifier,
+                              SQLPOINTER CharacterAttributePtr,
+                              SQLSMALLINT BufferLength,
+                              SQLSMALLINT* StringLengthPtr,
+                              SQLPOINTER NumericAttributePtr,
+                              TextEncoding encoding) {
   Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
   // A new call starts with no diagnostics from the previous one.
   statement->clearError();
@@ -225,8 +201,11 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_COLUMN_TYPE_NAME: { // 14
       WriteLog(LL_TRACE, "  Getting SQL column name");
       std::string columnTypeName = columnInfo.trinoRawTypeName;
-      truncated                  = writeNullTermStringToPtr(
-          CharacterAttributePtr, columnTypeName, BufferLength, StringLengthPtr);
+      truncated = writeNullTermStringToPtr(CharacterAttributePtr,
+                                           columnTypeName,
+                                           BufferLength,
+                                           StringLengthPtr,
+                                           encoding);
       break;
     }
     case SQL_DESC_TABLE_NAME:        // 15
@@ -236,7 +215,7 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       // Trino doesn't say which table a result column came from, and
       // ODBC uses an empty string for that.
       truncated = writeNullTermStringToPtr(
-          CharacterAttributePtr, "", BufferLength, StringLengthPtr);
+          CharacterAttributePtr, "", BufferLength, StringLengthPtr, encoding);
       break;
     }
     case SQL_DESC_LABEL:              // 18
@@ -246,7 +225,8 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       truncated = writeNullTermStringToPtr(CharacterAttributePtr,
                                            columnInfo.columnName,
                                            BufferLength,
-                                           StringLengthPtr);
+                                           StringLengthPtr,
+                                           encoding);
       break;
     }
     case SQL_DESC_LITERAL_PREFIX:   // 27
@@ -255,8 +235,11 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       // ODBC can express as a fixed prefix and suffix.
       SQLSMALLINT odbcTypeCode = columnInfo.odbcDataType;
       std::string quote        = isCharacterType(odbcTypeCode) ? "'" : "";
-      truncated                = writeNullTermStringToPtr(
-          CharacterAttributePtr, quote, BufferLength, StringLengthPtr);
+      truncated                = writeNullTermStringToPtr(CharacterAttributePtr,
+                                           quote,
+                                           BufferLength,
+                                           StringLengthPtr,
+                                           encoding);
       break;
     }
     case SQL_DESC_LOCAL_TYPE_NAME: { // 29
@@ -264,7 +247,8 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
       truncated = writeNullTermStringToPtr(CharacterAttributePtr,
                                            columnInfo.trinoRawTypeName,
                                            BufferLength,
-                                           StringLengthPtr);
+                                           StringLengthPtr,
+                                           encoding);
       break;
     }
     case SQL_DESC_NUM_PREC_RADIX: { // 32
@@ -338,8 +322,11 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
     case SQL_DESC_NAME: { // 1011
       WriteLog(LL_TRACE, "  Getting SQL column name");
       std::string columnName = columnInfo.columnName;
-      truncated              = writeNullTermStringToPtr(
-          CharacterAttributePtr, columnName, BufferLength, StringLengthPtr);
+      truncated              = writeNullTermStringToPtr(CharacterAttributePtr,
+                                           columnName,
+                                           BufferLength,
+                                           StringLengthPtr,
+                                           encoding);
       break;
     }
     case SQL_DESC_UNNAMED: { // 1012
@@ -382,3 +369,79 @@ SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
 
   return SQL_SUCCESS;
 }
+
+/*
+ The signatures of these functions differ between 64-bit and 32-bit
+ targets. For 32-bit, NumericAttributePtr is a SQLPOINTER, but for
+ 64-bit, its a SQLLEN*.
+ */
+#pragma warning(push)
+/*
+The CharacterAttributePtr and NumericAttributePtr fields may
+be unused if they aren't relevant to the requested attribute/column.
+This is a documented expectation for these out parameters, so we'll
+disable the warning about returning uninitialized memory in an out
+parameter.
+https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlcolattribute-function
+*/
+#pragma warning(disable : 6101)
+#if defined(_WIN64)
+SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
+                                  SQLUSMALLINT ColumnNumber,
+                                  SQLUSMALLINT FieldIdentifier,
+                                  _Out_writes_bytes_opt_(BufferLength)
+                                      SQLPOINTER CharacterAttributePtr,
+                                  SQLSMALLINT BufferLength,
+                                  _Out_opt_ SQLSMALLINT* StringLengthPtr,
+                                  _Out_opt_ SQLLEN* NumericAttributePtr) {
+#else
+SQLRETURN SQL_API SQLColAttribute(SQLHSTMT StatementHandle,
+                                  SQLUSMALLINT ColumnNumber,
+                                  SQLUSMALLINT FieldIdentifier,
+                                  _Out_writes_bytes_opt_(BufferLength)
+                                      SQLPOINTER CharacterAttributePtr,
+                                  SQLSMALLINT BufferLength,
+                                  _Out_opt_ SQLSMALLINT* StringLengthPtr,
+                                  _Out_opt_ SQLPOINTER NumericAttributePtr) {
+#endif
+  WriteLog(LL_TRACE, "Entering SQLColAttribute");
+  return colAttribute(StatementHandle,
+                      ColumnNumber,
+                      FieldIdentifier,
+                      CharacterAttributePtr,
+                      BufferLength,
+                      StringLengthPtr,
+                      NumericAttributePtr,
+                      AnsiText);
+}
+
+#if defined(_WIN64)
+SQLRETURN SQL_API SQLColAttributeW(SQLHSTMT StatementHandle,
+                                   SQLUSMALLINT ColumnNumber,
+                                   SQLUSMALLINT FieldIdentifier,
+                                   _Out_writes_bytes_opt_(BufferLength)
+                                       SQLPOINTER CharacterAttributePtr,
+                                   SQLSMALLINT BufferLength,
+                                   _Out_opt_ SQLSMALLINT* StringLengthPtr,
+                                   _Out_opt_ SQLLEN* NumericAttributePtr) {
+#else
+SQLRETURN SQL_API SQLColAttributeW(SQLHSTMT StatementHandle,
+                                   SQLUSMALLINT ColumnNumber,
+                                   SQLUSMALLINT FieldIdentifier,
+                                   _Out_writes_bytes_opt_(BufferLength)
+                                       SQLPOINTER CharacterAttributePtr,
+                                   SQLSMALLINT BufferLength,
+                                   _Out_opt_ SQLSMALLINT* StringLengthPtr,
+                                   _Out_opt_ SQLPOINTER NumericAttributePtr) {
+#endif
+  WriteLog(LL_TRACE, "Entering SQLColAttributeW");
+  return colAttribute(StatementHandle,
+                      ColumnNumber,
+                      FieldIdentifier,
+                      CharacterAttributePtr,
+                      BufferLength,
+                      StringLengthPtr,
+                      NumericAttributePtr,
+                      UnicodeText);
+}
+#pragma warning(pop)

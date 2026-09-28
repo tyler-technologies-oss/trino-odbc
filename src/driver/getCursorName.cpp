@@ -13,3 +13,13 @@ SQLRETURN SQL_API SQLGetCursorName(SQLHSTMT StatementHandle,
   WriteLog(LL_ERROR, "  ERROR: SQLGetCursorName unimplemented");
   return SQL_ERROR;
 }
+
+SQLRETURN SQL_API SQLGetCursorNameW(SQLHSTMT StatementHandle,
+                                    _Out_writes_opt_(BufferLength)
+                                        SQLWCHAR* CursorName,
+                                    SQLSMALLINT BufferLength,
+                                    _Out_opt_ SQLSMALLINT* NameLengthPtr) {
+  WriteLog(LL_TRACE, "Entering SQLGetCursorNameW");
+  WriteLog(LL_ERROR, "  ERROR: SQLGetCursorNameW unimplemented");
+  return SQL_ERROR;
+}

@@ -15,18 +15,25 @@ Write a diagnostic the driver recorded on a handle itself, as
 opposed to one reported by Trino, as a single diagnostic record.
 */
 static SQLRETURN writeHandleError(ErrorInfo& errorInfo,
-                                  SQLCHAR* SqlStatePtr,
+                                  SQLPOINTER SqlStatePtr,
                                   SQLINTEGER* NativeErrorPtr,
-                                  SQLCHAR* MessageTextPtr,
+                                  SQLPOINTER MessageTextPtr,
                                   SQLSMALLINT BufferLength,
-                                  SQLSMALLINT* TextLengthPtr) {
+                                  SQLSMALLINT* TextLengthPtr,
+                                  TextEncoding encoding) {
   // ODBC fixes the SQLSTATE buffer at five characters plus a
   // null terminator, which is the only size it can be given.
-  writeNullTermStringToPtr<SQLINTEGER>(
-      SqlStatePtr, errorInfo.sqlStateCode, SQL_SQLSTATE_SIZE + 1, nullptr);
+  writeNullTermCharsToPtr<SQLINTEGER>(SqlStatePtr,
+                                      errorInfo.sqlStateCode,
+                                      SQL_SQLSTATE_SIZE + 1,
+                                      nullptr,
+                                      encoding);
 
-  bool truncated = writeNullTermStringToPtr(
-      MessageTextPtr, errorInfo.errorMessage, BufferLength, TextLengthPtr);
+  bool truncated = writeNullTermCharsToPtr(MessageTextPtr,
+                                           errorInfo.errorMessage,
+                                           BufferLength,
+                                           TextLengthPtr,
+                                           encoding);
 
   if (NativeErrorPtr != nullptr) {
     *NativeErrorPtr =
@@ -39,22 +46,25 @@ static SQLRETURN writeHandleError(ErrorInfo& errorInfo,
   return truncated ? SQL_SUCCESS_WITH_INFO : SQL_SUCCESS;
 }
 
-SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
-                                SQLHANDLE Handle,
-                                SQLSMALLINT RecNumber,
-                                _Out_writes_opt_(6) SQLCHAR* SqlStatePtr,
-                                SQLINTEGER* NativeErrorPtr,
-                                _Out_writes_opt_(BufferLength)
-                                    SQLCHAR* MessageTextPtr,
-                                SQLSMALLINT BufferLength,
-                                _Out_opt_ SQLSMALLINT* TextLengthPtr) {
+/*
+The work of SQLGetDiagRec and SQLGetDiagRecW. The SQLSTATE and message
+are written for the kind of function that was called, and BufferLength
+is a count of characters.
+*/
+static SQLRETURN getDiagRec(SQLSMALLINT HandleType,
+                            SQLHANDLE Handle,
+                            SQLSMALLINT RecNumber,
+                            SQLPOINTER SqlStatePtr,
+                            SQLINTEGER* NativeErrorPtr,
+                            SQLPOINTER MessageTextPtr,
+                            SQLSMALLINT BufferLength,
+                            SQLSMALLINT* TextLengthPtr,
+                            TextEncoding encoding) {
   /*
   Return a series of 1-indexed diagnostic records from various handles.
   If a record is requested beyond what is actually available, return
   SQL_NO_DATA instead.
   */
-  WriteLog(LL_ERROR,
-           "Entering SQLGetDiagRec. HandleType= " + std::to_string(HandleType));
   switch (HandleType) {
     case (SQL_HANDLE_ENV): {
       Environment* env = reinterpret_cast<Environment*>(Handle);
@@ -75,7 +85,8 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
                                 NativeErrorPtr,
                                 MessageTextPtr,
                                 BufferLength,
-                                TextLengthPtr);
+                                TextLengthPtr,
+                                encoding);
       } else {
         return SQL_NO_DATA;
       }
@@ -98,7 +109,8 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
                                   NativeErrorPtr,
                                   MessageTextPtr,
                                   BufferLength,
-                                  TextLengthPtr);
+                                  TextLengthPtr,
+                                  encoding);
         }
         trinoRecNumber = RecNumber - 1;
       }
@@ -121,8 +133,11 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
 
         // ODBC fixes the SQLSTATE buffer at five characters plus a
         // null terminator, which is the only size it can be given.
-        writeNullTermStringToPtr<SQLINTEGER>(
-            SqlStatePtr, odbcErr.sqlstate, SQL_SQLSTATE_SIZE + 1, nullptr);
+        writeNullTermCharsToPtr<SQLINTEGER>(SqlStatePtr,
+                                            odbcErr.sqlstate,
+                                            SQL_SQLSTATE_SIZE + 1,
+                                            nullptr,
+                                            encoding);
 
         if (NativeErrorPtr) {
           *NativeErrorPtr = odbcErr.native;
@@ -132,8 +147,11 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
         // full length is reported so the application can ask again with
         // more room. As in writeHandleError, the return code alone reports the
         // truncation, since SQLGetDiagRec must not record a diagnostic.
-        bool truncated = writeNullTermStringToPtr(
-            MessageTextPtr, odbcErr.message, BufferLength, TextLengthPtr);
+        bool truncated = writeNullTermCharsToPtr(MessageTextPtr,
+                                                 odbcErr.message,
+                                                 BufferLength,
+                                                 TextLengthPtr,
+                                                 encoding);
 
         return truncated ? SQL_SUCCESS_WITH_INFO : SQL_SUCCESS;
       } else {
@@ -152,4 +170,49 @@ SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
       return SQL_ERROR;
     }
   }
+}
+
+SQLRETURN SQL_API SQLGetDiagRec(SQLSMALLINT HandleType,
+                                SQLHANDLE Handle,
+                                SQLSMALLINT RecNumber,
+                                _Out_writes_opt_(6) SQLCHAR* SqlStatePtr,
+                                SQLINTEGER* NativeErrorPtr,
+                                _Out_writes_opt_(BufferLength)
+                                    SQLCHAR* MessageTextPtr,
+                                SQLSMALLINT BufferLength,
+                                _Out_opt_ SQLSMALLINT* TextLengthPtr) {
+  WriteLog(LL_ERROR,
+           "Entering SQLGetDiagRec. HandleType= " + std::to_string(HandleType));
+  return getDiagRec(HandleType,
+                    Handle,
+                    RecNumber,
+                    SqlStatePtr,
+                    NativeErrorPtr,
+                    MessageTextPtr,
+                    BufferLength,
+                    TextLengthPtr,
+                    AnsiText);
+}
+
+SQLRETURN SQL_API SQLGetDiagRecW(SQLSMALLINT HandleType,
+                                 SQLHANDLE Handle,
+                                 SQLSMALLINT RecNumber,
+                                 _Out_writes_opt_(6) SQLWCHAR* SqlStatePtr,
+                                 SQLINTEGER* NativeErrorPtr,
+                                 _Out_writes_opt_(BufferLength)
+                                     SQLWCHAR* MessageTextPtr,
+                                 SQLSMALLINT BufferLength,
+                                 _Out_opt_ SQLSMALLINT* TextLengthPtr) {
+  WriteLog(LL_ERROR,
+           "Entering SQLGetDiagRecW. HandleType= " +
+               std::to_string(HandleType));
+  return getDiagRec(HandleType,
+                    Handle,
+                    RecNumber,
+                    SqlStatePtr,
+                    NativeErrorPtr,
+                    MessageTextPtr,
+                    BufferLength,
+                    TextLengthPtr,
+                    UnicodeText);
 }

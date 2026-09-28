@@ -3,7 +3,9 @@
 #include <format>
 #include <stdexcept>
 
+#include "../../util/stringFromChar.hpp"
 #include "../../util/stringReplace.hpp"
+#include "../../util/unicodeConversion.hpp"
 #include "../../util/writeLog.hpp"
 
 /*
@@ -16,42 +18,6 @@ static SQLLEN getIndicator(const DescriptorField& field) {
     return SQL_NTS;
   }
   return *field.bufferStrLenOrIndPtr;
-}
-
-/*
-Convert UTF-16 text, which is what Windows applications pass in a
-SQL_C_WCHAR buffer, to the UTF-8 text Trino expects.
-*/
-static std::string utf16ToUtf8(const uint16_t* text, size_t length) {
-  std::string result;
-  result.reserve(length);
-  for (size_t i = 0; i < length; i++) {
-    uint32_t codePoint = text[i];
-    // A high surrogate followed by a low surrogate encodes one code
-    // point above U+FFFF.
-    if (codePoint >= 0xD800 and codePoint <= 0xDBFF and i + 1 < length and
-        text[i + 1] >= 0xDC00 and text[i + 1] <= 0xDFFF) {
-      codePoint =
-          0x10000 + ((codePoint - 0xD800) << 10) + (text[i + 1] - 0xDC00);
-      i++;
-    }
-    if (codePoint < 0x80) {
-      result += static_cast<char>(codePoint);
-    } else if (codePoint < 0x800) {
-      result += static_cast<char>(0xC0 | (codePoint >> 6));
-      result += static_cast<char>(0x80 | (codePoint & 0x3F));
-    } else if (codePoint < 0x10000) {
-      result += static_cast<char>(0xE0 | (codePoint >> 12));
-      result += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
-      result += static_cast<char>(0x80 | (codePoint & 0x3F));
-    } else {
-      result += static_cast<char>(0xF0 | (codePoint >> 18));
-      result += static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F));
-      result += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
-      result += static_cast<char>(0x80 | (codePoint & 0x3F));
-    }
-  }
-  return result;
 }
 
 /*
@@ -195,16 +161,13 @@ std::string descriptorFieldToParameterText(const DescriptorField& field) {
     // .NET applications, such as Report Builder, bind every string
     // as UTF-16. The indicator holds its length in bytes.
     case SQL_C_WCHAR: { // -8
-      const uint16_t* text = static_cast<uint16_t*>(field.bufferPtr);
-      size_t length        = 0;
-      if (indicator == SQL_NTS) {
-        while (text[length] != 0) {
-          length++;
-        }
-      } else {
-        length = static_cast<size_t>(indicator) / sizeof(uint16_t);
-      }
-      return characterParameterText(utf16ToUtf8(text, length),
+      const char16_t* text = static_cast<char16_t*>(field.bufferPtr);
+      // The indicator counts bytes, and stringFromWideChar counts
+      // characters.
+      long length = (indicator == SQL_NTS)
+                        ? CHAR_IS_NTS
+                        : static_cast<long>(indicator / sizeof(char16_t));
+      return characterParameterText(stringFromWideChar(text, length),
                                     field.odbcDataType);
     }
     // Assume all other types are numeric literals and do not require quotes.

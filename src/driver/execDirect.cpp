@@ -9,6 +9,7 @@
 #include "../util/stringFromChar.hpp"
 #include "../util/stringReplace.hpp"
 #include "../util/stringTrim.hpp"
+#include "../util/unicodeConversion.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 #include "mappings/parameterToText.hpp"
@@ -99,4 +100,19 @@ SQLRETURN SQL_API SQLExecDirect(SQLHSTMT StatementHandle,
     statementPtr->setError(errorInfo);
     return SQL_ERROR;
   }
+}
+
+SQLRETURN SQL_API SQLExecDirectW(SQLHSTMT StatementHandle,
+                                 _In_reads_opt_(TextLength)
+                                     SQLWCHAR* StatementText,
+                                 SQLINTEGER TextLength) {
+  WriteLog(LL_TRACE, "Entering SQLExecDirectW");
+  if (not StatementText) {
+    return SQLExecDirect(StatementHandle, nullptr, TextLength);
+  }
+  std::string queryText = stringFromWideChar(
+      reinterpret_cast<char16_t*>(StatementText), TextLength);
+  return SQLExecDirect(StatementHandle,
+                       reinterpret_cast<SQLCHAR*>(queryText.data()),
+                       static_cast<SQLINTEGER>(queryText.size()));
 }

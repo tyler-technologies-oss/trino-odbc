@@ -4,6 +4,7 @@
 #include <sqlext.h>
 
 #include <functional>
+#include <string>
 
 #include "descriptorHandle.hpp"
 #include "handleErrorInfo.hpp"
@@ -48,6 +49,21 @@ class Statement {
     // Describe varchars with no length as SQL_LONGVARCHAR, from the
     // DSN's unboundedVarchar setting.
     bool unboundedVarcharAsLong = false;
+
+    // SQLGetData returns a text value too long for the application's
+    // buffer in parts, over several calls. These track which column of
+    // the current row is being read that way, as which C type, how many
+    // characters of it have been returned, and whether all of it has.
+    // The value's text is kept too, in the C type's encoding, so each
+    // part doesn't convert the whole value again.
+    // SQLFetch resets them for each new row.
+    SQLUSMALLINT getDataColumn = 0;
+    SQLSMALLINT getDataCType   = 0;
+    size_t getDataOffset       = 0;
+    bool getDataFinished       = false;
+    std::string getDataText;
+    std::u16string getDataWideText;
+    void resetGetDataPosition();
 
     // The ODBC protocol assumes these descriptors are
     // instantiated on all statements.
