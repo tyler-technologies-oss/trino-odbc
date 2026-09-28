@@ -1,9 +1,9 @@
 # Project Overview: Trino ODBC Driver (Partial Implementation)
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)]()
-[![Latest Release](https://img.shields.io/github/v/release/trinodb/trino-odbc.svg)]()
-[![Build Status](https://img.shields.io/github/actions/workflow/status/trinodb/trino-odbc/make_release.yml.svg)]()
-[![Contributors](https://img.shields.io/github/contributors/trinodb/trino-odbc.svg)]()
+[![Latest Release](https://img.shields.io/github/v/release/tyler-technologies-oss/trino-odbc.svg)](https://github.com/tyler-technologies-oss/trino-odbc/releases/latest)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/tyler-technologies-oss/trino-odbc/make_release.yml.svg)](https://github.com/tyler-technologies-oss/trino-odbc/actions/workflows/make_release.yml)
+[![Contributors](https://img.shields.io/github/contributors/tyler-technologies-oss/trino-odbc.svg)](https://github.com/tyler-technologies-oss/trino-odbc/graphs/contributors)
 [![Code Style](https://img.shields.io/badge/Code%20Style-Clang%20Format-blue.svg)]()
 
 ## Description
@@ -12,7 +12,9 @@ This open-source project is a partially complete ODBC driver for the
 [Trino distributed SQL engine](https://trino.io/). It implements the
 essential portions of the ODBC core specification required to enable
 Microsoft Excel and Microsoft PowerBI Desktop to connect to and
-execute queries against a Trino server. Four authentication methods
+execute queries against a Trino server. It also works with SQL Server
+linked servers (see "SQL Server Linked Servers" below) and with .NET
+applications such as Report Builder. Four authentication methods
 are supported: no authentication, External Authentication, the OIDC
 Client Credential flow, and the OIDC Device Authorization (Device
 Flow) grant.
@@ -28,7 +30,8 @@ Microsoft in any way.
 This driver is tested to work within a very narrow scope on Windows
 PCs and servers that utilize BI tools. Specifically, we target
 compatibility with Microsoft Excel and PowerBI Desktop with External
-Authentication, Client Credential Auth, and Device Flow. Other tools,
+Authentication, Client Credential Auth, and Device Flow, and with SQL
+Server linked servers through the `MSDASQL` provider. Other tools,
 forms of authentication, and functionality of the ODBC specification
 were left unimplemented if not required by these tools. Functionality on
 external systems or configurations may vary, and compatibility is
@@ -64,6 +67,9 @@ Please see [our Contributing guide](./CONTRIBUTING.md) for more information.
   it reads the bytes as UTF-8. See "Unicode" below.
 - Text columns are reported as `SQL_VARCHAR`/`SQL_CHAR`, not
   `SQL_WVARCHAR`/`SQL_WCHAR`, even though they can be read as `SQL_C_WCHAR`.
+  The exception is a `varchar` with no length when the DSN's **Unbounded
+  Varchar** setting is **Long Varchar**: it is reported as `SQL_LONGVARCHAR`.
+  See "SQL Server Linked Servers" below.
 - Supports prepared statements (SQLPrepare, SQLExecute, SQLBindParameter) only
   in a limited form. See the "Prepared Statements and Parameters" section below
   for what is and is not supported.
