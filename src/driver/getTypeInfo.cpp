@@ -221,3 +221,10 @@ SQLRETURN SQL_API SQLGetTypeInfo(SQLHSTMT StatementHandle,
                std::to_string(DataType));
   return SQL_SUCCESS;
 }
+
+SQLRETURN SQL_API SQLGetTypeInfoW(SQLHSTMT StatementHandle,
+                                  SQLSMALLINT DataType) {
+  // SQLGetTypeInfo takes no strings, so the Unicode version is the same.
+  WriteLog(LL_TRACE, "Entering SQLGetTypeInfoW");
+  return SQLGetTypeInfo(StatementHandle, DataType);
+}

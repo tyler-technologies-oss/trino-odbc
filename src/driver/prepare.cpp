@@ -5,6 +5,7 @@
 #include "../util/randomStr.hpp"
 #include "../util/stringFromChar.hpp"
 #include "../util/stringTrim.hpp"
+#include "../util/unicodeConversion.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 
@@ -92,4 +93,18 @@ SQLRETURN SQL_API SQLPrepare(SQLHSTMT StatementHandle,
   }
   // We should never get here, but let's have this in place just in case.
   return SQL_ERROR;
+}
+
+SQLRETURN SQL_API SQLPrepareW(SQLHSTMT StatementHandle,
+                              _In_reads_(TextLength) SQLWCHAR* StatementText,
+                              SQLINTEGER TextLength) {
+  WriteLog(LL_DEBUG, "Entering SQLPrepareW");
+  if (not StatementText) {
+    return SQLPrepare(StatementHandle, nullptr, TextLength);
+  }
+  std::string queryText = stringFromWideChar(
+      reinterpret_cast<char16_t*>(StatementText), TextLength);
+  return SQLPrepare(StatementHandle,
+                    reinterpret_cast<SQLCHAR*>(queryText.data()),
+                    static_cast<SQLINTEGER>(queryText.size()));
 }

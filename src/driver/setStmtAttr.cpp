@@ -41,3 +41,14 @@ SQLRETURN SQL_API SQLSetStmtAttr(SQLHSTMT StatementHandle,
 
   return SQL_SUCCESS;
 }
+
+SQLRETURN SQL_API SQLSetStmtAttrW(SQLHSTMT StatementHandle,
+                                  SQLINTEGER Attribute,
+                                  _In_reads_(_Inexpressible_(StringLength))
+                                      SQLPOINTER Value,
+                                  SQLINTEGER StringLength) {
+  // None of the attributes this driver supports are strings, so the
+  // Unicode version has nothing to convert.
+  WriteLog(LL_TRACE, "Entering SQLSetStmtAttrW");
+  return SQLSetStmtAttr(StatementHandle, Attribute, Value, StringLength);
+}

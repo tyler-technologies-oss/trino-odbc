@@ -80,6 +80,8 @@ SQLRETURN SQL_API SQLFetch(SQLHSTMT StatementHandle) {
   TrinoQuery* trinoQuery = statement->trinoQuery;
   // A new call starts with no diagnostics from the previous one.
   statement->clearError();
+  // A new row hasn't had any of its values read by SQLGetData.
+  statement->resetGetDataPosition();
 
   // There's no result to fetch from until the statement is executed.
   // A prepared statement, or one whose cursor was closed, holds the

@@ -4,6 +4,7 @@
 
 #include <map>
 
+#include "../util/valuePtrHelper.hpp"
 #include "../util/writeLog.hpp"
 #include "handles/statementHandle.hpp"
 #include "mappings/typeMappings.hpp"
@@ -32,20 +33,26 @@ SQLSMALLINT static inferODBCTypeCode(ColumnDescription description) {
   return odbcTypeCode;
 }
 
-SQLRETURN SQL_API SQLDescribeCol(SQLHSTMT StatementHandle,
-                                 SQLUSMALLINT ColumnNumber,
-                                 _Out_writes_opt_(BufferLength)
-                                     SQLCHAR* ColumnName,
-                                 SQLSMALLINT BufferLength,
-                                 _Out_opt_ SQLSMALLINT* NameLength,
-                                 _Out_opt_ SQLSMALLINT* DataType,
-                                 _Out_opt_ SQLULEN* ColumnSize,
-                                 _Out_opt_ SQLSMALLINT* DecimalDigits,
-                                 _Out_opt_ SQLSMALLINT* Nullable) {
-  WriteLog(LL_TRACE, "Entering SQLDescribeCol");
+/*
+The work of SQLDescribeCol and SQLDescribeColW. The column name is
+written for the kind of function that was called, and BufferLength is
+a count of characters.
+*/
+static SQLRETURN describeColumn(SQLHSTMT StatementHandle,
+                                SQLUSMALLINT ColumnNumber,
+                                SQLPOINTER ColumnName,
+                                SQLSMALLINT BufferLength,
+                                SQLSMALLINT* NameLength,
+                                SQLSMALLINT* DataType,
+                                SQLULEN* ColumnSize,
+                                SQLSMALLINT* DecimalDigits,
+                                SQLSMALLINT* Nullable,
+                                TextEncoding encoding) {
   WriteLog(LL_TRACE, "  Column index: " + std::to_string(ColumnNumber));
 
   Statement* statement = reinterpret_cast<Statement*>(StatementHandle);
+  // A new call starts with no diagnostics from the previous one.
+  statement->clearError();
   std::vector<ColumnDescription> columnDescriptions =
       statement->trinoQuery->getColumnDescriptions();
 
@@ -55,18 +62,11 @@ SQLRETURN SQL_API SQLDescribeCol(SQLHSTMT StatementHandle,
   Descriptor* descriptorPtr       = statement->getRowDescriptor();
   DescriptorField descriptorField = descriptorPtr->getField(ColumnNumber);
 
-  const std::string& columnNameString = thisColumnDescription.getName();
-  SQLSMALLINT copyLength              = std::min<SQLSMALLINT>(
-      BufferLength - 1, static_cast<SQLSMALLINT>(columnNameString.size()));
-
-  if (ColumnName) {
-    memcpy(ColumnName, columnNameString.c_str(), copyLength);
-    ColumnName[copyLength] = '\0'; // Null-terminate.
-  }
-  if (NameLength) {
-    *NameLength =
-        static_cast<SQLSMALLINT>(thisColumnDescription.getName().size());
-  }
+  bool truncated = writeNullTermCharsToPtr(ColumnName,
+                                           thisColumnDescription.getName(),
+                                           BufferLength,
+                                           NameLength,
+                                           encoding);
   if (DataType) {
     *DataType = inferODBCTypeCode(thisColumnDescription);
   }
@@ -89,5 +89,60 @@ SQLRETURN SQL_API SQLDescribeCol(SQLHSTMT StatementHandle,
     *DecimalDigits = descriptorField.scale;
   }
 
+  if (truncated) {
+    WriteLog(LL_WARN,
+             "  The buffer provided for the column name was too small");
+    // 01004 = String data, right truncated. NameLength holds the
+    // length the application needs to allocate to get the whole name.
+    statement->setError(ErrorInfo("String data, right truncated", "01004"));
+    return SQL_SUCCESS_WITH_INFO;
+  }
+
   return SQL_SUCCESS;
+}
+
+SQLRETURN SQL_API SQLDescribeCol(SQLHSTMT StatementHandle,
+                                 SQLUSMALLINT ColumnNumber,
+                                 _Out_writes_opt_(BufferLength)
+                                     SQLCHAR* ColumnName,
+                                 SQLSMALLINT BufferLength,
+                                 _Out_opt_ SQLSMALLINT* NameLength,
+                                 _Out_opt_ SQLSMALLINT* DataType,
+                                 _Out_opt_ SQLULEN* ColumnSize,
+                                 _Out_opt_ SQLSMALLINT* DecimalDigits,
+                                 _Out_opt_ SQLSMALLINT* Nullable) {
+  WriteLog(LL_TRACE, "Entering SQLDescribeCol");
+  return describeColumn(StatementHandle,
+                        ColumnNumber,
+                        ColumnName,
+                        BufferLength,
+                        NameLength,
+                        DataType,
+                        ColumnSize,
+                        DecimalDigits,
+                        Nullable,
+                        AnsiText);
+}
+
+SQLRETURN SQL_API SQLDescribeColW(SQLHSTMT StatementHandle,
+                                  SQLUSMALLINT ColumnNumber,
+                                  _Out_writes_opt_(BufferLength)
+                                      SQLWCHAR* ColumnName,
+                                  SQLSMALLINT BufferLength,
+                                  _Out_opt_ SQLSMALLINT* NameLength,
+                                  _Out_opt_ SQLSMALLINT* DataType,
+                                  _Out_opt_ SQLULEN* ColumnSize,
+                                  _Out_opt_ SQLSMALLINT* DecimalDigits,
+                                  _Out_opt_ SQLSMALLINT* Nullable) {
+  WriteLog(LL_TRACE, "Entering SQLDescribeColW");
+  return describeColumn(StatementHandle,
+                        ColumnNumber,
+                        ColumnName,
+                        BufferLength,
+                        NameLength,
+                        DataType,
+                        ColumnSize,
+                        DecimalDigits,
+                        Nullable,
+                        UnicodeText);
 }

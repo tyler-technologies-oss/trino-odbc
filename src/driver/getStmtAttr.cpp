@@ -104,3 +104,16 @@ SQLRETURN SQL_API SQLGetStmtAttr(SQLHSTMT StatementHandle,
            "  Finished getting attribute: " + std::to_string(Attribute));
   return SQL_SUCCESS;
 }
+
+SQLRETURN SQL_API SQLGetStmtAttrW(
+    SQLHSTMT StatementHandle,
+    SQLINTEGER Attribute,
+    _Out_writes_opt_(_Inexpressible_(BufferLength)) SQLPOINTER Value,
+    SQLINTEGER BufferLength,
+    _Out_opt_ SQLINTEGER* StringLength) {
+  // None of the attributes this driver supports are strings, so the
+  // Unicode version has nothing to convert.
+  WriteLog(LL_TRACE, "Entering SQLGetStmtAttrW");
+  return SQLGetStmtAttr(
+      StatementHandle, Attribute, Value, BufferLength, StringLength);
+}
